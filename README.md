@@ -1,4 +1,4 @@
-# Digital_BookShelf# 🎙️ Speech Emotion Recognition using Machine Learning
+# 🎙️ Speech Emotion Recognition using Machine Learning
 
 ## 📌 Project Overview
 
@@ -143,17 +143,29 @@ Speech_Emotion_Recognition/
 
 ## ▶️ How to Run
 
-### 1. Install dependencies
+### 1. Install backend dependencies
 
 ```bash
-pip install librosa soundfile numpy scikit-learn matplotlib seaborn
+pip install -r backend/requirements.txt
 ```
 
-### 2. Run the project
+### 2. Start backend API
 
-```python
-python main.py
+```bash
+uvicorn backend.app:app --reload
 ```
+
+---
+
+### 3. Open frontend
+
+Open `frontend/index.html` in your browser.
+
+Then:
+
+1. Click **Check Health**
+2. Click **Train** (first time)
+3. Upload a `.wav` file and click **Predict**
 
 ---
 
