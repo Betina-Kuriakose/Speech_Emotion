@@ -9,7 +9,7 @@
 <body>
   <main class="container">
     <h1>Speech Emotion Recognition</h1>
-    <p class="subtitle">Upload a WAV file and predict emotion using your trained MLP model.</p>
+    <p class="subtitle">Use your trained notebook model to predict emotion from live voice or WAV upload.</p>
 
     <section class="card">
       <h2>API Settings</h2>
@@ -20,17 +20,18 @@
     </section>
 
     <section class="card">
-      <h2>Train Model</h2>
-      <label for="datasetGlob">Dataset glob (optional)</label>
-      <input id="datasetGlob" type="text" placeholder="C:/.../data/dataset/Actor_*/*.wav" />
-      <button id="trainBtn" type="button">Train</button>
-      <pre id="trainOutput" class="output"></pre>
-    </section>
-
-    <section class="card">
       <h2>Predict Emotion</h2>
+      <p class="hint">Record 3-8 seconds for better predictions.</p>
+      <div class="button-row">
+        <button id="startRecordBtn" type="button">Start Recording</button>
+        <button id="stopRecordBtn" type="button" disabled>Stop Recording</button>
+      </div>
+      <audio id="recordingPreview" controls></audio>
+      <button id="predictRecordedBtn" type="button" disabled>Predict from Recording</button>
+      <hr />
+      <label for="audioFile">Or upload WAV file</label>
       <input id="audioFile" type="file" accept=".wav,audio/wav" />
-      <button id="predictBtn" type="button">Predict</button>
+      <button id="predictFileBtn" type="button">Predict from File</button>
       <pre id="predictOutput" class="output"></pre>
     </section>
   </main>
