@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Speech Emotion Recognition</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main class="container">
+    <h1>Speech Emotion Recognition</h1>
+    <p class="subtitle">Upload a WAV file and predict emotion using your trained MLP model.</p>
+
+    <section class="card">
+      <h2>API Settings</h2>
+      <label for="apiBaseUrl">Backend URL</label>
+      <input id="apiBaseUrl" type="text" value="http://127.0.0.1:8000" />
+      <button id="healthBtn" type="button">Check Health</button>
+      <pre id="healthOutput" class="output"></pre>
+    </section>
+
+    <section class="card">
+      <h2>Train Model</h2>
+      <label for="datasetGlob">Dataset glob (optional)</label>
+      <input id="datasetGlob" type="text" placeholder="C:/.../data/dataset/Actor_*/*.wav" />
+      <button id="trainBtn" type="button">Train</button>
+      <pre id="trainOutput" class="output"></pre>
+    </section>
+
+    <section class="card">
+      <h2>Predict Emotion</h2>
+      <input id="audioFile" type="file" accept=".wav,audio/wav" />
+      <button id="predictBtn" type="button">Predict</button>
+      <pre id="predictOutput" class="output"></pre>
+    </section>
+  </main>
+
+  <script src="./app.js"></script>
+</body>
+</html>
