@@ -38,6 +38,7 @@ class TrainRequest(BaseModel):
 
 
 class JournalEntryCreate(BaseModel):
+    title: Optional[str] = Field(default=None, max_length=160)
     transcript: str = Field(..., min_length=1, max_length=1000)
     emotion: str = Field(..., min_length=1, max_length=40)
     confidence: Optional[float] = None
@@ -149,6 +150,7 @@ def create_journal_entry(payload: JournalEntryCreate) -> Dict[str, Any]:
     entries = _read_entries()
     new_entry = {
         "id": f"entry-{int(created_at.timestamp() * 1000)}-{len(entries) + 1}",
+        "title": payload.title.strip() if payload.title else None,
         "transcript": payload.transcript.strip(),
         "emotion": payload.emotion.strip().lower(),
         "confidence": payload.confidence,
