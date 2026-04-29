@@ -44,7 +44,7 @@ app.add_middleware(
 mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=3000)
 mongo_db = mongo_client[MONGO_DB_NAME]
 users_collection: Collection = mongo_db["users"]
-entries_collection: Collection = mongo_db["entries"]
+entries_collection: Collection = mongo_db["my_journal"]
 
 try:
     users_collection.create_index([("username", ASCENDING)], unique=True)
@@ -70,6 +70,14 @@ class JournalEntryCreate(BaseModel):
     emotion: str = Field(..., min_length=1, max_length=40)
     confidence: Optional[float] = None
     created_at: Optional[str] = None
+
+
+class JournalEntryUpdate(BaseModel):
+    username: str = Field(..., min_length=3, max_length=40)
+    title: Optional[str] = Field(default=None, max_length=160)
+    transcript: str = Field(..., min_length=1, max_length=1000)
+    emotion: str = Field(..., min_length=1, max_length=40)
+    confidence: Optional[float] = None
 
 
 def _check_mongo() -> bool:
@@ -144,6 +152,8 @@ def health() -> Dict[str, Any]:
         "model_path": MODEL_PATH,
         "mongodb_connected": _check_mongo(),
         "mongodb_db": MONGO_DB_NAME,
+        "journal_collection": "my_journal",
+        "login_collection": "users",
     }
 
 
@@ -235,7 +245,44 @@ def create_journal_entry(payload: JournalEntryCreate) -> Dict[str, Any]:
         "created_at": created_at.isoformat(),
     }
     entries_collection.insert_one(new_entry)
+    new_entry.pop("_id", None)
     return {"message": "Journal entry saved.", "entry": new_entry}
+
+
+@app.put("/journal/entries/{entry_id}")
+def update_journal_entry(entry_id: str, payload: JournalEntryUpdate) -> Dict[str, Any]:
+    if not _check_mongo():
+        raise HTTPException(status_code=500, detail="MongoDB is not reachable.")
+
+    normalized_username = payload.username.strip().lower()
+    update_doc = {
+        "title": payload.title.strip() if payload.title else None,
+        "transcript": payload.transcript.strip(),
+        "emotion": payload.emotion.strip().lower(),
+        "confidence": payload.confidence,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    result = entries_collection.update_one(
+        {"id": entry_id, "username": normalized_username},
+        {"$set": update_doc},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Entry not found.")
+
+    updated = entries_collection.find_one({"id": entry_id, "username": normalized_username}, {"_id": 0})
+    return {"message": "Journal entry updated.", "entry": updated}
+
+
+@app.delete("/journal/entries/{entry_id}")
+def delete_journal_entry(entry_id: str, username: str) -> Dict[str, Any]:
+    if not _check_mongo():
+        raise HTTPException(status_code=500, detail="MongoDB is not reachable.")
+
+    normalized_username = username.strip().lower()
+    result = entries_collection.delete_one({"id": entry_id, "username": normalized_username})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Entry not found.")
+    return {"message": "Journal entry deleted.", "id": entry_id}
 
 
 @app.get("/journal/trends")
