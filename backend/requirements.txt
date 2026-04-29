@@ -5,3 +5,6 @@ librosa
 soundfile
 numpy
 scikit-learn
+pymongo
+python-dotenv
+dnspython

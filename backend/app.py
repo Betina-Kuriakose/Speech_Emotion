@@ -1,12 +1,18 @@
-import json
 import os
-from pathlib import Path
+import hashlib
+import hmac
+import secrets
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from dotenv import load_dotenv
+from pymongo import ASCENDING, DESCENDING, MongoClient
+from pymongo.collection import Collection
+from pymongo.errors import DuplicateKeyError
 from pydantic import BaseModel, Field
 
 from .ser_model import SpeechEmotionModel
@@ -16,7 +22,9 @@ BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIR = BASE_DIR.parent / "frontend"
 MODEL_PATH = str(BASE_DIR / "model" / "emotion_model.pkl")
 DEFAULT_DATASET_GLOB = str(BASE_DIR.parent / "data" / "dataset" / "Actor_*" / "*.wav")
-JOURNAL_DATA_PATH = BASE_DIR / "data" / "journal_entries.json"
+load_dotenv(BASE_DIR / ".env")
+MONGO_URI = os.getenv("MONGO_URI")
+MONGO_DB_NAME = os.getenv("MONGO_DB_NAME")
 POSITIVE_EMOTIONS = {"happy", "calm"}
 
 ser_model = SpeechEmotionModel(model_path=MODEL_PATH)
@@ -33,11 +41,30 @@ app.add_middleware(
 )
 
 
+mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=3000)
+mongo_db = mongo_client[MONGO_DB_NAME]
+users_collection: Collection = mongo_db["users"]
+entries_collection: Collection = mongo_db["entries"]
+
+try:
+    users_collection.create_index([("username", ASCENDING)], unique=True)
+    entries_collection.create_index([("username", ASCENDING), ("created_at", DESCENDING)])
+except Exception:
+    # Keep app booting even if MongoDB is currently unavailable.
+    pass
+
+
 class TrainRequest(BaseModel):
     dataset_glob: str | None = None
 
 
+class UserAuthRequest(BaseModel):
+    username: str = Field(..., min_length=3, max_length=40)
+    password: str = Field(..., min_length=6, max_length=120)
+
+
 class JournalEntryCreate(BaseModel):
+    username: str = Field(..., min_length=3, max_length=40)
     title: Optional[str] = Field(default=None, max_length=160)
     transcript: str = Field(..., min_length=1, max_length=1000)
     emotion: str = Field(..., min_length=1, max_length=40)
@@ -45,23 +72,27 @@ class JournalEntryCreate(BaseModel):
     created_at: Optional[str] = None
 
 
-def _ensure_journal_store() -> None:
-    JOURNAL_DATA_PATH.parent.mkdir(parents=True, exist_ok=True)
-    if not JOURNAL_DATA_PATH.exists():
-        JOURNAL_DATA_PATH.write_text("[]", encoding="utf-8")
+def _check_mongo() -> bool:
+    try:
+        mongo_client.admin.command("ping")
+        return True
+    except Exception:
+        return False
 
 
-def _read_entries() -> List[Dict[str, Any]]:
-    _ensure_journal_store()
-    raw = JOURNAL_DATA_PATH.read_text(encoding="utf-8")
-    entries: List[Dict[str, Any]] = json.loads(raw)
-    entries.sort(key=lambda item: item.get("created_at", ""), reverse=True)
-    return entries
+def _hash_password(password: str, salt_hex: Optional[str] = None) -> str:
+    salt = bytes.fromhex(salt_hex) if salt_hex else secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 390000)
+    return f"{salt.hex()}${digest.hex()}"
 
 
-def _write_entries(entries: List[Dict[str, Any]]) -> None:
-    _ensure_journal_store()
-    JOURNAL_DATA_PATH.write_text(json.dumps(entries, indent=2), encoding="utf-8")
+def _verify_password(password: str, stored: str) -> bool:
+    try:
+        salt_hex, stored_hash = stored.split("$", maxsplit=1)
+        recomputed = _hash_password(password, salt_hex=salt_hex).split("$", maxsplit=1)[1]
+        return hmac.compare_digest(stored_hash, recomputed)
+    except Exception:
+        return False
 
 
 def _parse_iso_datetime(value: str) -> datetime:
@@ -73,13 +104,46 @@ def _parse_iso_datetime(value: str) -> datetime:
     return dt.astimezone(timezone.utc)
 
 
+@app.post("/auth/register")
+def register(payload: UserAuthRequest) -> Dict[str, Any]:
+    if not _check_mongo():
+        raise HTTPException(status_code=500, detail="MongoDB is not reachable.")
+
+    username = payload.username.strip().lower()
+    password_hash = _hash_password(payload.password)
+    doc = {
+        "username": username,
+        "password_hash": password_hash,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        users_collection.insert_one(doc)
+    except DuplicateKeyError as exc:
+        raise HTTPException(status_code=409, detail="Username already exists.") from exc
+
+    return {"message": "User registered successfully.", "username": username}
+
+
+@app.post("/auth/login")
+def login(payload: UserAuthRequest) -> Dict[str, Any]:
+    if not _check_mongo():
+        raise HTTPException(status_code=500, detail="MongoDB is not reachable.")
+
+    username = payload.username.strip().lower()
+    user = users_collection.find_one({"username": username})
+    if not user or not _verify_password(payload.password, user.get("password_hash", "")):
+        raise HTTPException(status_code=401, detail="Invalid username or password.")
+    return {"message": "Login successful.", "username": username}
+
+
 @app.get("/health")
 def health() -> Dict[str, Any]:
     return {
         "status": "ok",
         "model_loaded": ser_model.model is not None,
         "model_path": MODEL_PATH,
-        "journal_data_path": str(JOURNAL_DATA_PATH),
+        "mongodb_connected": _check_mongo(),
+        "mongodb_db": MONGO_DB_NAME,
     }
 
 
@@ -131,41 +195,57 @@ async def predict(file: UploadFile = File(...)) -> Dict[str, Any]:
 
 
 @app.get("/journal/entries")
-def list_journal_entries(limit: int = 50) -> Dict[str, Any]:
-    entries = _read_entries()
+def list_journal_entries(username: str, limit: int = 50) -> Dict[str, Any]:
+    if not _check_mongo():
+        raise HTTPException(status_code=500, detail="MongoDB is not reachable.")
+
+    normalized_username = username.strip().lower()
     safe_limit = max(1, min(limit, 200))
+    docs = list(
+        entries_collection.find({"username": normalized_username}, {"_id": 0}).sort("created_at", DESCENDING).limit(safe_limit)
+    )
     return {
-        "count": len(entries),
-        "items": entries[:safe_limit],
+        "count": len(docs),
+        "items": docs,
     }
 
 
 @app.post("/journal/entries")
 def create_journal_entry(payload: JournalEntryCreate) -> Dict[str, Any]:
+    if not _check_mongo():
+        raise HTTPException(status_code=500, detail="MongoDB is not reachable.")
+
+    normalized_username = payload.username.strip().lower()
+    user_exists = users_collection.find_one({"username": normalized_username}, {"_id": 1})
+    if not user_exists:
+        raise HTTPException(status_code=404, detail="User not found. Please register first.")
+
     try:
         created_at = _parse_iso_datetime(payload.created_at) if payload.created_at else datetime.now(timezone.utc)
     except Exception as exc:
         raise HTTPException(status_code=400, detail="Invalid created_at value. Use ISO format.") from exc
 
-    entries = _read_entries()
     new_entry = {
-        "id": f"entry-{int(created_at.timestamp() * 1000)}-{len(entries) + 1}",
+        "id": f"entry-{int(created_at.timestamp() * 1000)}-{secrets.token_hex(3)}",
+        "username": normalized_username,
         "title": payload.title.strip() if payload.title else None,
         "transcript": payload.transcript.strip(),
         "emotion": payload.emotion.strip().lower(),
         "confidence": payload.confidence,
         "created_at": created_at.isoformat(),
     }
-    entries.append(new_entry)
-    entries.sort(key=lambda item: item.get("created_at", ""), reverse=True)
-    _write_entries(entries)
+    entries_collection.insert_one(new_entry)
     return {"message": "Journal entry saved.", "entry": new_entry}
 
 
 @app.get("/journal/trends")
-def journal_trends(weeks: int = 4) -> Dict[str, Any]:
+def journal_trends(username: str, weeks: int = 4) -> Dict[str, Any]:
+    if not _check_mongo():
+        raise HTTPException(status_code=500, detail="MongoDB is not reachable.")
+
+    normalized_username = username.strip().lower()
     safe_weeks = max(1, min(weeks, 12))
-    entries = _read_entries()
+    entries = list(entries_collection.find({"username": normalized_username}, {"_id": 0}).sort("created_at", DESCENDING))
     now = datetime.now(timezone.utc)
     since = now - timedelta(weeks=safe_weeks)
     scoped: List[Dict[str, Any]] = []
