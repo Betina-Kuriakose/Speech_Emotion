@@ -10,10 +10,20 @@ const healthBtn = document.getElementById("healthBtn");
 
 const healthOutput = document.getElementById("healthOutput");
 const predictOutput = document.getElementById("predictOutput");
+const journalText = document.getElementById("journalText");
+const saveEntryBtn = document.getElementById("saveEntryBtn");
+const journalOutput = document.getElementById("journalOutput");
+const refreshTrendsBtn = document.getElementById("refreshTrendsBtn");
+const refreshEntriesBtn = document.getElementById("refreshEntriesBtn");
+const trendSummary = document.getElementById("trendSummary");
+const weeklyTrend = document.getElementById("weeklyTrend");
+const wellbeingPrompts = document.getElementById("wellbeingPrompts");
+const entriesList = document.getElementById("entriesList");
 
 let mediaRecorder = null;
 let recordedChunks = [];
 let recordedWavBlob = null;
+let lastPrediction = null;
 
 function apiBase() {
   return apiBaseInput.value.trim().replace(/\/$/, "");
@@ -30,6 +40,14 @@ async function safeFetch(url, options = {}) {
     throw new Error(body.detail || `Request failed (${response.status})`);
   }
   return body;
+}
+
+function formatDateTime(isoDate) {
+  try {
+    return new Date(isoDate).toLocaleString();
+  } catch {
+    return isoDate;
+  }
 }
 
 function floatTo16BitPCM(view, offset, input) {
@@ -85,7 +103,106 @@ async function predictWithBlob(blob, filename) {
     method: "POST",
     body: formData,
   });
+  lastPrediction = data;
   print(predictOutput, data);
+}
+
+function renderTrendSummary(data) {
+  const ratioPct = `${Math.round((data.positive_ratio || 0) * 100)}%`;
+  const tiles = [
+    { label: "Entries in Window", value: String(data.total_entries ?? 0) },
+    { label: "Positive Markers (happy/calm)", value: ratioPct },
+    {
+      label: "Days Since Positive",
+      value: data.days_since_positive == null ? "No positive yet" : String(data.days_since_positive),
+    },
+    {
+      label: "Absence Alert",
+      value: data.prolonged_positive_absence ? "Yes" : "No",
+    },
+  ];
+  trendSummary.innerHTML = tiles
+    .map(
+      (tile) => `
+      <div class="stat-tile">
+        <div class="stat-label">${tile.label}</div>
+        <div class="stat-value">${tile.value}</div>
+      </div>
+    `
+    )
+    .join("");
+}
+
+function renderWeeklyTrend(data) {
+  if (!data.weekly?.length) {
+    weeklyTrend.innerHTML = "<p>No weekly trend data yet.</p>";
+    return;
+  }
+
+  weeklyTrend.innerHTML = data.weekly
+    .map((week) => {
+      const percent = week.total ? Math.round((week.positive / week.total) * 100) : 0;
+      return `
+        <div class="week-bar">
+          <div class="week-line">
+            <span>${week.week}</span>
+            <span>${week.positive}/${week.total} positive (${percent}%)</span>
+          </div>
+          <div class="bar-track">
+            <div class="bar-fill" style="width:${percent}%"></div>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function renderPrompts(data) {
+  const prompts = data.wellbeing_prompts || [];
+  if (!prompts.length) {
+    wellbeingPrompts.innerHTML = "<li>No prompt right now. Keep journaling daily.</li>";
+    return;
+  }
+  wellbeingPrompts.innerHTML = prompts.map((prompt) => `<li>${prompt}</li>`).join("");
+}
+
+async function loadTrends() {
+  try {
+    const data = await safeFetch(`${apiBase()}/journal/trends?weeks=4`);
+    renderTrendSummary(data);
+    renderWeeklyTrend(data);
+    renderPrompts(data);
+  } catch (error) {
+    trendSummary.innerHTML = `<p>Error loading trends: ${error.message}</p>`;
+    weeklyTrend.innerHTML = "";
+    wellbeingPrompts.innerHTML = "";
+  }
+}
+
+async function loadEntries() {
+  try {
+    const data = await safeFetch(`${apiBase()}/journal/entries?limit=10`);
+    if (!data.items?.length) {
+      entriesList.innerHTML = "<p>No journal entries yet. Save your first one after prediction.</p>";
+      return;
+    }
+    entriesList.innerHTML = data.items
+      .map(
+        (entry) => `
+          <article class="entry-item">
+            <div class="entry-meta">
+              <strong>${entry.emotion}</strong>
+              ${entry.confidence != null ? `(${Math.round(entry.confidence * 100)}%)` : ""}
+              • ${formatDateTime(entry.created_at)}
+            </div>
+            <div>${entry.transcript}</div>
+          </article>
+        `
+      )
+      .join("");
+  } catch (error) {
+    entriesList.innerHTML = `<p>Error loading entries: ${error.message}</p>`;
+  }
 }
 
 healthBtn.addEventListener("click", async () => {
@@ -178,6 +295,46 @@ predictFileBtn.addEventListener("click", async () => {
   }
 });
 
+saveEntryBtn.addEventListener("click", async () => {
+  const transcript = journalText.value.trim();
+  if (!transcript) {
+    print(journalOutput, "Please write a short transcript before saving.");
+    return;
+  }
+  if (!lastPrediction?.emotion) {
+    print(journalOutput, "Run an emotion prediction first.");
+    return;
+  }
+
+  try {
+    print(journalOutput, "Saving journal entry...");
+    const payload = {
+      transcript,
+      emotion: lastPrediction.emotion,
+      confidence: lastPrediction.confidence ?? null,
+      created_at: new Date().toISOString(),
+    };
+    const result = await safeFetch(`${apiBase()}/journal/entries`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    print(journalOutput, result);
+    journalText.value = "";
+    await Promise.all([loadTrends(), loadEntries()]);
+  } catch (error) {
+    print(journalOutput, `Error: ${error.message}`);
+  }
+});
+
+refreshTrendsBtn.addEventListener("click", async () => {
+  await loadTrends();
+});
+
+refreshEntriesBtn.addEventListener("click", async () => {
+  await loadEntries();
+});
+
 window.addEventListener("load", async () => {
   // Surface model status immediately for prediction-only workflow.
   print(healthOutput, "Checking backend...");
@@ -193,4 +350,5 @@ window.addEventListener("load", async () => {
   } catch (error) {
     print(healthOutput, `Error: ${error.message}`);
   }
+  await Promise.all([loadTrends(), loadEntries()]);
 });

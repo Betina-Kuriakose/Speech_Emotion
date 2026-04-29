@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Speech Emotion Recognition</title>
+  <title>Daily Voice Journal</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
   <main class="container">
-    <h1>Speech Emotion Recognition</h1>
-    <p class="subtitle">Use your trained notebook model to predict emotion from live voice or WAV upload.</p>
+    <h1>Daily Voice Journal</h1>
+    <p class="subtitle">Record your daily voice note, detect emotion, and track trends over time.</p>
 
     <section class="card">
       <h2>API Settings</h2>
@@ -20,7 +20,7 @@
     </section>
 
     <section class="card">
-      <h2>Predict Emotion</h2>
+      <h2>Voice Check-in</h2>
       <p class="hint">Record 3-8 seconds for better predictions.</p>
       <div class="button-row">
         <button id="startRecordBtn" type="button">Start Recording</button>
@@ -33,6 +33,29 @@
       <input id="audioFile" type="file" accept=".wav,audio/wav" />
       <button id="predictFileBtn" type="button">Predict from File</button>
       <pre id="predictOutput" class="output"></pre>
+    </section>
+
+    <section class="card">
+      <h2>Save Journal Entry</h2>
+      <p class="hint">After prediction, save a short transcript to build your emotional trend timeline.</p>
+      <label for="journalText">What did you talk about?</label>
+      <textarea id="journalText" rows="4" placeholder="Today I felt..."></textarea>
+      <button id="saveEntryBtn" type="button">Save Journal Entry</button>
+      <pre id="journalOutput" class="output"></pre>
+    </section>
+
+    <section class="card">
+      <h2>Emotion Trends Dashboard</h2>
+      <div class="button-row">
+        <button id="refreshTrendsBtn" type="button">Refresh Trends</button>
+        <button id="refreshEntriesBtn" type="button">Refresh Entries</button>
+      </div>
+      <div id="trendSummary" class="trend-summary"></div>
+      <div id="weeklyTrend" class="weekly-trend"></div>
+      <h3>Wellbeing Prompts</h3>
+      <ul id="wellbeingPrompts" class="prompt-list"></ul>
+      <h3>Recent Entries</h3>
+      <div id="entriesList" class="entries-list"></div>
     </section>
   </main>
 
