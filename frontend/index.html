@@ -7,56 +7,77 @@
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
-  <main class="container">
-    <h1>Daily Voice Journal</h1>
-    <p class="subtitle">Record your daily voice note, detect emotion, and track trends over time.</p>
+  <section id="loginView" class="login-shell">
+    <div class="login-card">
+      <h1>Mindflow Login</h1>
+      <p>Sign in to access your personal journal.</p>
+      <label for="loginUsername">Username</label>
+      <input id="loginUsername" type="text" placeholder="Enter username" />
+      <label for="loginPassword">Password</label>
+      <input id="loginPassword" type="password" placeholder="Enter password" />
+      <button id="loginBtn" type="button" class="save-btn">Log In</button>
+      <p id="loginError" class="login-error"></p>
+    </div>
+  </section>
 
-    <section class="card">
-      <h2>API Settings</h2>
-      <label for="apiBaseUrl">Backend URL</label>
-      <input id="apiBaseUrl" type="text" value="http://127.0.0.1:8000" />
-      <button id="healthBtn" type="button">Check Health</button>
-      <pre id="healthOutput" class="output"></pre>
-    </section>
+  <main id="journalView" class="app-shell hidden">
+    <header class="topbar">
+      <div>
+        <h1><strong>Mindflow:</strong> Personal Journal</h1>
+        <p id="welcomeText">Welcome back!</p>
+      </div>
+      <div class="avatar">S</div>
+    </header>
 
-    <section class="card">
-      <h2>Voice Check-in</h2>
-      <p class="hint">Record 3-8 seconds for better predictions.</p>
-      <div class="button-row">
-        <button id="startRecordBtn" type="button">Start Recording</button>
-        <button id="stopRecordBtn" type="button" disabled>Stop Recording</button>
+    <section class="card entry-card">
+      <h2>New Entry: <span id="entryDate"></span></h2>
+      <div class="entry-grid">
+        <div>
+          <input id="entryTitle" type="text" placeholder="Title your entry..." />
+          <textarea id="journalText" rows="4" placeholder="Today has been a difficult day..."></textarea>
+          <div class="hidden-controls">
+            <button id="healthBtn" type="button">Check Health</button>
+            <button id="startRecordBtn" type="button">Start Recording</button>
+            <button id="stopRecordBtn" type="button" disabled>Stop Recording</button>
+            <button id="predictRecordedBtn" type="button" disabled>Predict from Recording</button>
+            <input id="audioFile" type="file" accept=".wav,audio/wav" />
+            <button id="predictFileBtn" type="button">Predict from File</button>
+            <button id="refreshTrendsBtn" type="button">Refresh Trends</button>
+            <button id="refreshEntriesBtn" type="button">Refresh Entries</button>
+            <button id="healthQuickBtn" type="button">Check Health</button>
+          </div>
+        </div>
+        <div class="record-tile">
+          <button id="recordVoiceBtn" type="button" class="mic-btn">🎤</button>
+          <p id="recordLabel">Record Voice Note</p>
+          <button id="saveEntryBtn" type="button" class="save-btn">Save Entry</button>
+        </div>
       </div>
       <audio id="recordingPreview" controls></audio>
-      <button id="predictRecordedBtn" type="button" disabled>Predict from Recording</button>
-      <hr />
-      <label for="audioFile">Or upload WAV file</label>
-      <input id="audioFile" type="file" accept=".wav,audio/wav" />
-      <button id="predictFileBtn" type="button">Predict from File</button>
-      <pre id="predictOutput" class="output"></pre>
     </section>
 
-    <section class="card">
-      <h2>Save Journal Entry</h2>
-      <p class="hint">After prediction, save a short transcript to build your emotional trend timeline.</p>
-      <label for="journalText">What did you talk about?</label>
-      <textarea id="journalText" rows="4" placeholder="Today I felt..."></textarea>
-      <button id="saveEntryBtn" type="button">Save Journal Entry</button>
-      <pre id="journalOutput" class="output"></pre>
-    </section>
-
-    <section class="card">
-      <h2>Emotion Trends Dashboard</h2>
-      <div class="button-row">
-        <button id="refreshTrendsBtn" type="button">Refresh Trends</button>
-        <button id="refreshEntriesBtn" type="button">Refresh Entries</button>
+    <section class="row-grid">
+      <div class="card mood-card">
+        <button type="button" class="mood-chip" data-mood="calm">😌 Calm</button>
+        <button type="button" class="mood-chip" data-mood="happy">🙂 Happy</button>
+        <button type="button" class="mood-chip" data-mood="sad">☹ Sad</button>
+        <button type="button" class="mood-chip" data-mood="anxious">🫁 Anxious</button>
       </div>
-      <div id="trendSummary" class="trend-summary"></div>
-      <div id="weeklyTrend" class="weekly-trend"></div>
-      <h3>Wellbeing Prompts</h3>
-      <ul id="wellbeingPrompts" class="prompt-list"></ul>
-      <h3>Recent Entries</h3>
-      <div id="entriesList" class="entries-list"></div>
+
+      <div class="card nudge-card">
+        <h3>Gentle Nudge</h3>
+        <p id="nudgeText">Feeling a bit heavy? Try a 5-min Breathing Exercise.</p>
+        <a id="quickLink" class="quick-link" href="https://www.youtube.com/results?search_query=5+minute+breathing+exercise" target="_blank" rel="noreferrer">Quick Link</a>
+      </div>
     </section>
+
+    <section class="timeline-row">
+      <button class="nav-btn">‹</button>
+      <div id="entriesList" class="entries-strip"></div>
+      <button class="nav-btn">›</button>
+    </section>
+
+    <p id="statusMessage" class="status-message"></p>
   </main>
 
   <script src="./app.js"></script>

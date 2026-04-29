@@ -1,3 +1,12 @@
+const loginView = document.getElementById("loginView");
+const journalView = document.getElementById("journalView");
+const loginUsername = document.getElementById("loginUsername");
+const loginPassword = document.getElementById("loginPassword");
+const loginBtn = document.getElementById("loginBtn");
+const loginError = document.getElementById("loginError");
+const welcomeText = document.getElementById("welcomeText");
+const statusMessage = document.getElementById("statusMessage");
+
 const apiBaseInput = document.getElementById("apiBaseUrl");
 const audioFileInput = document.getElementById("audioFile");
 const startRecordBtn = document.getElementById("startRecordBtn");
@@ -5,40 +14,60 @@ const stopRecordBtn = document.getElementById("stopRecordBtn");
 const predictRecordedBtn = document.getElementById("predictRecordedBtn");
 const predictFileBtn = document.getElementById("predictFileBtn");
 const recordingPreview = document.getElementById("recordingPreview");
-
 const healthBtn = document.getElementById("healthBtn");
-
-const healthOutput = document.getElementById("healthOutput");
-const predictOutput = document.getElementById("predictOutput");
 const journalText = document.getElementById("journalText");
 const saveEntryBtn = document.getElementById("saveEntryBtn");
-const journalOutput = document.getElementById("journalOutput");
 const refreshTrendsBtn = document.getElementById("refreshTrendsBtn");
 const refreshEntriesBtn = document.getElementById("refreshEntriesBtn");
-const trendSummary = document.getElementById("trendSummary");
-const weeklyTrend = document.getElementById("weeklyTrend");
-const wellbeingPrompts = document.getElementById("wellbeingPrompts");
 const entriesList = document.getElementById("entriesList");
+const recordVoiceBtn = document.getElementById("recordVoiceBtn");
+const recordLabel = document.getElementById("recordLabel");
+const entryDate = document.getElementById("entryDate");
+const nudgeText = document.getElementById("nudgeText");
+const quickLink = document.getElementById("quickLink");
+const entryTitle = document.getElementById("entryTitle");
 
 let mediaRecorder = null;
 let recordedChunks = [];
 let recordedWavBlob = null;
 let lastPrediction = null;
+let selectedMood = null;
+
+const moodConfig = {
+  sad: {
+    text: "Feeling a bit heavy?",
+    linkLabel: "Quick Link: 5-min Breathing",
+    linkHref: "https://www.youtube.com/results?search_query=5+minute+guided+breathing+exercise",
+  },
+  anxious: {
+    text: "Mind racing? Let's ground yourself.",
+    linkLabel: "Quick Link: 5-4-3-2-1 Grounding",
+    linkHref: "https://www.youtube.com/results?search_query=5-4-3-2-1+grounding+technique",
+  },
+  calm: {
+    text: "Glad you're finding peace today. Ready to reflect?",
+    linkLabel: "Quick Link: Gratitude Prompt",
+    linkHref: "https://www.verywellmind.com/what-is-gratitude-5207792",
+  },
+  happy: {
+    text: "Great to hear! Keep the positive momentum going.",
+    linkLabel: "Quick Link: Wins of the Week",
+    linkHref: "https://jamesclear.com/three-questions",
+  },
+};
 
 function apiBase() {
   return apiBaseInput.value.trim().replace(/\/$/, "");
 }
 
-function print(target, data) {
-  target.textContent = typeof data === "string" ? data : JSON.stringify(data, null, 2);
+function setStatus(message) {
+  if (statusMessage) statusMessage.textContent = message;
 }
 
 async function safeFetch(url, options = {}) {
   const response = await fetch(url, options);
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(body.detail || `Request failed (${response.status})`);
-  }
+  if (!response.ok) throw new Error(body.detail || `Request failed (${response.status})`);
   return body;
 }
 
@@ -50,6 +79,27 @@ function formatDateTime(isoDate) {
   }
 }
 
+function applyMoodSelection(mood) {
+  selectedMood = mood;
+  document.querySelectorAll(".mood-chip").forEach((chip) => {
+    chip.classList.toggle("active", chip.getAttribute("data-mood") === mood);
+  });
+  const cfg = moodConfig[mood];
+  if (!cfg) return;
+  nudgeText.textContent = cfg.text;
+  quickLink.textContent = cfg.linkLabel;
+  quickLink.href = cfg.linkHref;
+}
+
+function wireMoodClicks() {
+  document.querySelectorAll(".mood-chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const mood = chip.getAttribute("data-mood");
+      applyMoodSelection(mood);
+    });
+  });
+}
+
 function floatTo16BitPCM(view, offset, input) {
   for (let i = 0; i < input.length; i += 1, offset += 2) {
     const s = Math.max(-1, Math.min(1, input[i]));
@@ -58,15 +108,12 @@ function floatTo16BitPCM(view, offset, input) {
 }
 
 function writeString(view, offset, string) {
-  for (let i = 0; i < string.length; i += 1) {
-    view.setUint8(offset + i, string.charCodeAt(i));
-  }
+  for (let i = 0; i < string.length; i += 1) view.setUint8(offset + i, string.charCodeAt(i));
 }
 
 function encodeWav(samples, sampleRate) {
   const buffer = new ArrayBuffer(44 + samples.length * 2);
   const view = new DataView(buffer);
-
   writeString(view, 0, "RIFF");
   view.setUint32(4, 36 + samples.length * 2, true);
   writeString(view, 8, "WAVE");
@@ -81,7 +128,6 @@ function encodeWav(samples, sampleRate) {
   writeString(view, 36, "data");
   view.setUint32(40, samples.length * 2, true);
   floatTo16BitPCM(view, 44, samples);
-
   return new Blob([view], { type: "audio/wav" });
 }
 
@@ -96,259 +142,189 @@ async function convertToWav(audioBlob) {
 }
 
 async function predictWithBlob(blob, filename) {
-  print(predictOutput, "Running prediction...");
+  setStatus("Running emotion prediction...");
   const formData = new FormData();
   formData.append("file", blob, filename);
-  const data = await safeFetch(`${apiBase()}/predict`, {
-    method: "POST",
-    body: formData,
-  });
+  const data = await safeFetch(`${apiBase()}/predict`, { method: "POST", body: formData });
   lastPrediction = data;
-  print(predictOutput, data);
-}
-
-function renderTrendSummary(data) {
-  const ratioPct = `${Math.round((data.positive_ratio || 0) * 100)}%`;
-  const tiles = [
-    { label: "Entries in Window", value: String(data.total_entries ?? 0) },
-    { label: "Positive Markers (happy/calm)", value: ratioPct },
-    {
-      label: "Days Since Positive",
-      value: data.days_since_positive == null ? "No positive yet" : String(data.days_since_positive),
-    },
-    {
-      label: "Absence Alert",
-      value: data.prolonged_positive_absence ? "Yes" : "No",
-    },
-  ];
-  trendSummary.innerHTML = tiles
-    .map(
-      (tile) => `
-      <div class="stat-tile">
-        <div class="stat-label">${tile.label}</div>
-        <div class="stat-value">${tile.value}</div>
-      </div>
-    `
-    )
-    .join("");
-}
-
-function renderWeeklyTrend(data) {
-  if (!data.weekly?.length) {
-    weeklyTrend.innerHTML = "<p>No weekly trend data yet.</p>";
-    return;
-  }
-
-  weeklyTrend.innerHTML = data.weekly
-    .map((week) => {
-      const percent = week.total ? Math.round((week.positive / week.total) * 100) : 0;
-      return `
-        <div class="week-bar">
-          <div class="week-line">
-            <span>${week.week}</span>
-            <span>${week.positive}/${week.total} positive (${percent}%)</span>
-          </div>
-          <div class="bar-track">
-            <div class="bar-fill" style="width:${percent}%"></div>
-          </div>
-        </div>
-      `;
-    })
-    .join("");
-}
-
-function renderPrompts(data) {
-  const prompts = data.wellbeing_prompts || [];
-  if (!prompts.length) {
-    wellbeingPrompts.innerHTML = "<li>No prompt right now. Keep journaling daily.</li>";
-    return;
-  }
-  wellbeingPrompts.innerHTML = prompts.map((prompt) => `<li>${prompt}</li>`).join("");
-}
-
-async function loadTrends() {
-  try {
-    const data = await safeFetch(`${apiBase()}/journal/trends?weeks=4`);
-    renderTrendSummary(data);
-    renderWeeklyTrend(data);
-    renderPrompts(data);
-  } catch (error) {
-    trendSummary.innerHTML = `<p>Error loading trends: ${error.message}</p>`;
-    weeklyTrend.innerHTML = "";
-    wellbeingPrompts.innerHTML = "";
-  }
+  const predictedMood = String(data.emotion || "").toLowerCase();
+  if (moodConfig[predictedMood]) applyMoodSelection(predictedMood);
+  setStatus(`Detected mood: ${data.emotion}`);
 }
 
 async function loadEntries() {
   try {
     const data = await safeFetch(`${apiBase()}/journal/entries?limit=10`);
     if (!data.items?.length) {
-      entriesList.innerHTML = "<p>No journal entries yet. Save your first one after prediction.</p>";
+      entriesList.innerHTML = "<p>No journal entries yet. Save your first one.</p>";
       return;
     }
-    entriesList.innerHTML = data.items
-      .map(
-        (entry) => `
-          <article class="entry-item">
-            <div class="entry-meta">
-              <strong>${entry.emotion}</strong>
-              ${entry.confidence != null ? `(${Math.round(entry.confidence * 100)}%)` : ""}
-              • ${formatDateTime(entry.created_at)}
-            </div>
-            <div>${entry.transcript}</div>
-          </article>
-        `
-      )
-      .join("");
+    entriesList.innerHTML = data.items.map((entry) => `
+      <article class="entry-item">
+        <div><strong>${entry.title || "Voice note"}</strong></div>
+        <div class="entry-meta">${entry.emotion} • ${formatDateTime(entry.created_at)}</div>
+        <div>${entry.transcript}</div>
+      </article>
+    `).join("");
   } catch (error) {
-    entriesList.innerHTML = `<p>Error loading entries: ${error.message}</p>`;
+    setStatus(`Could not load entries: ${error.message}`);
   }
 }
 
-healthBtn.addEventListener("click", async () => {
-  print(healthOutput, "Checking backend...");
+async function loadTrends() {
   try {
-    const data = await safeFetch(`${apiBase()}/health`);
-    print(healthOutput, data);
-  } catch (error) {
-    print(healthOutput, `Error: ${error.message}`);
+    const data = await safeFetch(`${apiBase()}/journal/trends?weeks=4`);
+    const firstPrompt = data.wellbeing_prompts?.[0];
+    if (firstPrompt && !selectedMood) nudgeText.textContent = firstPrompt;
+  } catch {
+    // Keep UI stable when trends are unavailable.
   }
-});
+}
 
-startRecordBtn.addEventListener("click", async () => {
-  try {
-    recordedChunks = [];
-    recordedWavBlob = null;
-    recordingPreview.removeAttribute("src");
-    predictRecordedBtn.disabled = true;
+function setLoggedIn(username) {
+  sessionStorage.setItem("mindflow_user", username);
+  loginView.classList.add("hidden");
+  journalView.classList.remove("hidden");
+  welcomeText.textContent = `Welcome back, ${username}!`;
+}
 
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    mediaRecorder = new MediaRecorder(stream);
+function wireLogin() {
+  loginBtn.addEventListener("click", () => {
+    const username = loginUsername.value.trim();
+    const password = loginPassword.value.trim();
+    if (!username || !password) {
+      loginError.textContent = "Please enter both username and password.";
+      return;
+    }
+    loginError.textContent = "";
+    setLoggedIn(username);
+  });
+}
 
-    mediaRecorder.ondataavailable = (event) => {
-      if (event.data.size > 0) {
-        recordedChunks.push(event.data);
-      }
-    };
+function wireInteractions() {
+  healthBtn.addEventListener("click", async () => {
+    try {
+      await safeFetch(`${apiBase()}/health`);
+      setStatus("Backend connected.");
+    } catch (error) {
+      setStatus(`Backend error: ${error.message}`);
+    }
+  });
 
-    mediaRecorder.onstop = async () => {
-      if (!recordedChunks.length) {
-        print(predictOutput, "No audio captured. Please try again.");
-        return;
-      }
-      try {
+  startRecordBtn.addEventListener("click", async () => {
+    try {
+      recordedChunks = [];
+      recordedWavBlob = null;
+      recordingPreview.removeAttribute("src");
+      predictRecordedBtn.disabled = true;
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream);
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) recordedChunks.push(event.data);
+      };
+      mediaRecorder.onstop = async () => {
+        if (!recordedChunks.length) return;
         const recordedBlob = new Blob(recordedChunks, { type: mediaRecorder.mimeType });
         recordedWavBlob = await convertToWav(recordedBlob);
         recordingPreview.src = URL.createObjectURL(recordedWavBlob);
         predictRecordedBtn.disabled = false;
-        print(predictOutput, "Recording ready. Click 'Predict from Recording'.");
-      } catch (error) {
-        print(predictOutput, `Could not process recording: ${error.message}`);
-      }
+        stream.getTracks().forEach((track) => track.stop());
+        startRecordBtn.disabled = false;
+        stopRecordBtn.disabled = true;
+        recordLabel.textContent = "Record Voice Note";
+        await predictWithBlob(recordedWavBlob, "recorded.wav");
+      };
+      mediaRecorder.start();
+      startRecordBtn.disabled = true;
+      stopRecordBtn.disabled = false;
+    } catch (error) {
+      setStatus(`Microphone error: ${error.message}`);
+    }
+  });
 
-      stream.getTracks().forEach((track) => track.stop());
-      startRecordBtn.disabled = false;
-      stopRecordBtn.disabled = true;
-    };
+  stopRecordBtn.addEventListener("click", () => {
+    if (mediaRecorder && mediaRecorder.state === "recording") mediaRecorder.stop();
+  });
 
-    mediaRecorder.start();
-    startRecordBtn.disabled = true;
-    stopRecordBtn.disabled = false;
-    print(predictOutput, "Recording... click 'Stop Recording' when done.");
-  } catch (error) {
-    print(predictOutput, `Microphone error: ${error.message}`);
-  }
-});
+  predictRecordedBtn.addEventListener("click", async () => {
+    if (!recordedWavBlob) return;
+    try {
+      await predictWithBlob(recordedWavBlob, "recorded.wav");
+    } catch (error) {
+      setStatus(`Prediction error: ${error.message}`);
+    }
+  });
 
-stopRecordBtn.addEventListener("click", () => {
-  if (mediaRecorder && mediaRecorder.state === "recording") {
-    mediaRecorder.stop();
-  }
-});
+  predictFileBtn.addEventListener("click", async () => {
+    const file = audioFileInput.files?.[0];
+    if (!file) return;
+    try {
+      await predictWithBlob(file, file.name);
+    } catch (error) {
+      setStatus(`Prediction error: ${error.message}`);
+    }
+  });
 
-predictRecordedBtn.addEventListener("click", async () => {
-  if (!recordedWavBlob) {
-    print(predictOutput, "Record audio first.");
-    return;
-  }
-  try {
-    await predictWithBlob(recordedWavBlob, "recorded.wav");
-  } catch (error) {
-    print(predictOutput, `Error: ${error.message}`);
-  }
-});
+  saveEntryBtn.addEventListener("click", async () => {
+    const transcript = journalText.value.trim();
+    if (!transcript) {
+      setStatus("Please write your journal text before saving.");
+      return;
+    }
+    const emotion = lastPrediction?.emotion || selectedMood;
+    if (!emotion) {
+      setStatus("Select a mood or run voice prediction before saving.");
+      return;
+    }
+    try {
+      const payload = {
+        title: entryTitle?.value.trim() || "Voice note",
+        transcript,
+        emotion,
+        confidence: lastPrediction?.confidence ?? null,
+        created_at: new Date().toISOString(),
+      };
+      await safeFetch(`${apiBase()}/journal/entries`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      journalText.value = "";
+      if (entryTitle) entryTitle.value = "";
+      setStatus("Journal entry saved.");
+      await loadEntries();
+    } catch (error) {
+      setStatus(`Save failed: ${error.message}`);
+    }
+  });
 
-predictFileBtn.addEventListener("click", async () => {
-  const file = audioFileInput.files?.[0];
-  if (!file) {
-    print(predictOutput, "Please choose a .wav file first.");
-    return;
-  }
-  if (!file.name.toLowerCase().endsWith(".wav")) {
-    print(predictOutput, "Please upload a WAV (.wav) file.");
-    return;
-  }
-  try {
-    await predictWithBlob(file, file.name);
-  } catch (error) {
-    print(predictOutput, `Error: ${error.message}`);
-  }
-});
+  recordVoiceBtn.addEventListener("click", () => {
+    if (mediaRecorder && mediaRecorder.state === "recording") {
+      recordLabel.textContent = "Processing...";
+      stopRecordBtn.click();
+      return;
+    }
+    recordLabel.textContent = "Recording... tap to stop";
+    startRecordBtn.click();
+  });
 
-saveEntryBtn.addEventListener("click", async () => {
-  const transcript = journalText.value.trim();
-  if (!transcript) {
-    print(journalOutput, "Please write a short transcript before saving.");
-    return;
-  }
-  if (!lastPrediction?.emotion) {
-    print(journalOutput, "Run an emotion prediction first.");
-    return;
-  }
-
-  try {
-    print(journalOutput, "Saving journal entry...");
-    const payload = {
-      transcript,
-      emotion: lastPrediction.emotion,
-      confidence: lastPrediction.confidence ?? null,
-      created_at: new Date().toISOString(),
-    };
-    const result = await safeFetch(`${apiBase()}/journal/entries`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    print(journalOutput, result);
-    journalText.value = "";
-    await Promise.all([loadTrends(), loadEntries()]);
-  } catch (error) {
-    print(journalOutput, `Error: ${error.message}`);
-  }
-});
-
-refreshTrendsBtn.addEventListener("click", async () => {
-  await loadTrends();
-});
-
-refreshEntriesBtn.addEventListener("click", async () => {
-  await loadEntries();
-});
+  refreshTrendsBtn.addEventListener("click", async () => loadTrends());
+  refreshEntriesBtn.addEventListener("click", async () => loadEntries());
+}
 
 window.addEventListener("load", async () => {
-  // Surface model status immediately for prediction-only workflow.
-  print(healthOutput, "Checking backend...");
-  try {
-    const data = await safeFetch(`${apiBase()}/health`);
-    print(healthOutput, data);
-    if (!data.model_loaded) {
-      print(
-        predictOutput,
-        "Model is not loaded. Save your trained notebook model to backend/model/emotion_model.pkl first."
-      );
-    }
-  } catch (error) {
-    print(healthOutput, `Error: ${error.message}`);
+  if (entryDate) {
+    entryDate.textContent = new Date().toLocaleString(undefined, {
+      weekday: "long", month: "long", day: "numeric", hour: "numeric", minute: "2-digit",
+    });
   }
-  await Promise.all([loadTrends(), loadEntries()]);
+  wireLogin();
+  wireMoodClicks();
+  wireInteractions();
+  applyMoodSelection("sad");
+
+  const existingUser = sessionStorage.getItem("mindflow_user");
+  if (existingUser) setLoggedIn(existingUser);
+
+  await Promise.all([loadEntries(), loadTrends()]);
 });
