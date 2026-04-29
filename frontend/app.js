@@ -3,6 +3,7 @@ const journalView = document.getElementById("journalView");
 const loginUsername = document.getElementById("loginUsername");
 const loginPassword = document.getElementById("loginPassword");
 const loginBtn = document.getElementById("loginBtn");
+const registerBtn = document.getElementById("registerBtn");
 const loginError = document.getElementById("loginError");
 const welcomeText = document.getElementById("welcomeText");
 const statusMessage = document.getElementById("statusMessage");
@@ -32,6 +33,7 @@ let recordedChunks = [];
 let recordedWavBlob = null;
 let lastPrediction = null;
 let selectedMood = null;
+let currentUsername = null;
 
 const moodConfig = {
   sad: {
@@ -57,7 +59,10 @@ const moodConfig = {
 };
 
 function apiBase() {
-  return apiBaseInput.value.trim().replace(/\/$/, "");
+  if (apiBaseInput && apiBaseInput.value) {
+    return apiBaseInput.value.trim().replace(/\/$/, "");
+  }
+  return window.location.origin.replace(/\/$/, "");
 }
 
 function setStatus(message) {
@@ -153,8 +158,11 @@ async function predictWithBlob(blob, filename) {
 }
 
 async function loadEntries() {
+  if (!currentUsername) return;
   try {
-    const data = await safeFetch(`${apiBase()}/journal/entries?limit=10`);
+    const data = await safeFetch(
+      `${apiBase()}/journal/entries?username=${encodeURIComponent(currentUsername)}&limit=10`
+    );
     if (!data.items?.length) {
       entriesList.innerHTML = "<p>No journal entries yet. Save your first one.</p>";
       return;
@@ -172,8 +180,11 @@ async function loadEntries() {
 }
 
 async function loadTrends() {
+  if (!currentUsername) return;
   try {
-    const data = await safeFetch(`${apiBase()}/journal/trends?weeks=4`);
+    const data = await safeFetch(
+      `${apiBase()}/journal/trends?username=${encodeURIComponent(currentUsername)}&weeks=4`
+    );
     const firstPrompt = data.wellbeing_prompts?.[0];
     if (firstPrompt && !selectedMood) nudgeText.textContent = firstPrompt;
   } catch {
@@ -182,6 +193,7 @@ async function loadTrends() {
 }
 
 function setLoggedIn(username) {
+  currentUsername = username;
   sessionStorage.setItem("mindflow_user", username);
   loginView.classList.add("hidden");
   journalView.classList.remove("hidden");
@@ -189,16 +201,33 @@ function setLoggedIn(username) {
 }
 
 function wireLogin() {
-  loginBtn.addEventListener("click", () => {
+  async function submitAuth(mode) {
     const username = loginUsername.value.trim();
     const password = loginPassword.value.trim();
     if (!username || !password) {
       loginError.textContent = "Please enter both username and password.";
       return;
     }
-    loginError.textContent = "";
-    setLoggedIn(username);
-  });
+    try {
+      const endpoint = mode === "register" ? "/auth/register" : "/auth/login";
+      await safeFetch(`${apiBase()}${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      loginError.textContent = "";
+      setLoggedIn(username.toLowerCase());
+      await Promise.all([loadEntries(), loadTrends()]);
+      setStatus(mode === "register" ? "Account created and logged in." : "Logged in successfully.");
+    } catch (error) {
+      loginError.textContent = error.message;
+    }
+  }
+
+  loginBtn.addEventListener("click", async () => submitAuth("login"));
+  if (registerBtn) {
+    registerBtn.addEventListener("click", async () => submitAuth("register"));
+  }
 }
 
 function wireInteractions() {
@@ -278,6 +307,7 @@ function wireInteractions() {
     }
     try {
       const payload = {
+        username: currentUsername,
         title: entryTitle?.value.trim() || "Voice note",
         transcript,
         emotion,
@@ -324,7 +354,8 @@ window.addEventListener("load", async () => {
   applyMoodSelection("sad");
 
   const existingUser = sessionStorage.getItem("mindflow_user");
-  if (existingUser) setLoggedIn(existingUser);
-
-  await Promise.all([loadEntries(), loadTrends()]);
+  if (existingUser) {
+    setLoggedIn(existingUser);
+    await Promise.all([loadEntries(), loadTrends()]);
+  }
 });

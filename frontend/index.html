@@ -15,7 +15,10 @@
       <input id="loginUsername" type="text" placeholder="Enter username" />
       <label for="loginPassword">Password</label>
       <input id="loginPassword" type="password" placeholder="Enter password" />
-      <button id="loginBtn" type="button" class="save-btn">Log In</button>
+      <div class="login-actions">
+        <button id="loginBtn" type="button" class="save-btn">Log In</button>
+        <button id="registerBtn" type="button" class="save-btn secondary-btn">Register</button>
+      </div>
       <p id="loginError" class="login-error"></p>
     </div>
   </section>
@@ -36,6 +39,7 @@
           <input id="entryTitle" type="text" placeholder="Title your entry..." />
           <textarea id="journalText" rows="4" placeholder="Today has been a difficult day..."></textarea>
           <div class="hidden-controls">
+            <input id="apiBaseUrl" type="text" value="http://127.0.0.1:8000" />
             <button id="healthBtn" type="button">Check Health</button>
             <button id="startRecordBtn" type="button">Start Recording</button>
             <button id="stopRecordBtn" type="button" disabled>Stop Recording</button>

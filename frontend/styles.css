@@ -37,6 +37,14 @@ body {
   margin-top: 10px !important;
   color: #b91c1c !important;
 }
+.login-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+.secondary-btn {
+  background: #475569 !important;
+}
 .app-shell {
   max-width: 980px;
   margin: 0 auto;
