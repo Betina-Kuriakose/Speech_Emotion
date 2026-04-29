@@ -7,6 +7,7 @@ const registerBtn = document.getElementById("registerBtn");
 const loginError = document.getElementById("loginError");
 const welcomeText = document.getElementById("welcomeText");
 const statusMessage = document.getElementById("statusMessage");
+const switchUserBtn = document.getElementById("switchUserBtn");
 
 const apiBaseInput = document.getElementById("apiBaseUrl");
 const audioFileInput = document.getElementById("audioFile");
@@ -374,6 +375,23 @@ function setLoggedIn(username) {
   loginView.classList.add("hidden");
   journalView.classList.remove("hidden");
   welcomeText.textContent = `Welcome back, ${username}!`;
+  if (switchUserBtn) {
+    const initial = username.trim().charAt(0).toUpperCase() || "U";
+    switchUserBtn.textContent = initial;
+    switchUserBtn.title = `Switch user (currently ${username})`;
+  }
+}
+
+function switchUser() {
+  currentUsername = null;
+  sessionStorage.removeItem("mindflow_user");
+  journalView.classList.add("hidden");
+  loginView.classList.remove("hidden");
+  loginPassword.value = "";
+  loginError.textContent = "";
+  entriesList.innerHTML = "";
+  setStatus("Switched user. Please log in.");
+  loginUsername.focus();
 }
 
 function wireLogin() {
@@ -518,6 +536,9 @@ function wireInteractions() {
 
   refreshTrendsBtn.addEventListener("click", async () => loadTrends());
   refreshEntriesBtn.addEventListener("click", async () => loadEntries());
+  if (switchUserBtn) {
+    switchUserBtn.addEventListener("click", () => switchUser());
+  }
 
   entriesList.addEventListener("click", async (event) => {
     const target = event.target;

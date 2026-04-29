@@ -97,6 +97,16 @@ body {
   place-items: center;
   font-weight: 700;
   font-size: 34px;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.2s ease;
+}
+.avatar:hover {
+  transform: translateY(-1px) scale(1.02);
+  box-shadow: 0 0 28px rgba(122, 206, 255, 0.6);
+}
+.avatar:focus-visible {
+  outline: 2px solid rgba(173, 233, 255, 0.9);
+  outline-offset: 3px;
 }
 
 .card {
