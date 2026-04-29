@@ -1,181 +1,146 @@
-# 🎙️ Speech Emotion Recognition using Machine Learning
+# Mindflow - Voice Journal and Emotion Insight App
 
-## 📌 Project Overview
+Mindflow is a journaling web app where users can speak, convert voice to text, predict emotion, and receive gentle support suggestions.
 
-This project focuses on **Speech Emotion Recognition (SER)** using machine learning techniques. The goal is to analyze audio signals and classify the underlying human emotion based on speech.
+It combines:
+- speech emotion recognition from audio
+- live voice-to-text transcription in the browser
+- mood selection and guidance (`calm`, `happy`, `sad`, `anxious`)
+- secure user authentication
+- MongoDB persistence for users and journal entries
 
-The model extracts acoustic features such as **MFCC, Chroma, and Mel Spectrogram**, and uses a neural network classifier to predict emotions like *calm, happy, fearful, and disgust*.
+## Core Features
 
----
+- **User accounts**: Register and log in with username/password.
+- **Voice journaling**: Record voice notes directly in the app.
+- **Voice-to-text**: Auto-fills journal text from speech (browser-supported).
+- **Emotion prediction**: Predicts emotion from recorded/uploaded WAV audio.
+- **Combined mood inference**: Uses voice emotion + content signals to choose final mood.
+- **Support nudges**: Updates contextual help links based on selected/predicted mood.
+- **History and trends**: Stores entries and computes emotional trend summaries.
 
-## 🎯 Objective
+## Tech Stack
 
-* Build a system to **recognize emotions from speech**
-* Apply **audio feature extraction techniques**
-* Train a **machine learning model (MLPClassifier)** for classification
+- **Backend**: FastAPI, Python
+- **ML/Audio**: librosa, soundfile, scikit-learn
+- **Database**: MongoDB (Atlas or local), PyMongo
+- **Frontend**: HTML, CSS, Vanilla JavaScript
 
----
+## Project Structure
 
-## 📥 Dataset
-
-The dataset used is **RAVDESS (Ryerson Audio-Visual Database of Emotional Speech and Song)**.
-
-Due to its large size (**~24.8GB**), it is **not included in this repository**.
-
-👉 Download from Kaggle:
-https://www.kaggle.com/datasets/uwrfkaggler/ravdess-emotional-speech-audio?resource=download
-
----
-
-### 📌 Dataset Setup
-
-1. Download and extract the dataset
-2. Place it inside your project directory as follows:
-
-```
-Speech_Emotion_Recognition/
-│
-├── data/
-│   └── dataset/
-│       ├── Actor_01/
-│       ├── Actor_02/
-│       ├── ...
-```
-
-3. Update the dataset path in your code if needed:
-
-```python
-glob.glob("path_to_dataset/Actor_*/*.wav")
+```text
+Speech_Emotion/
+├── backend/
+│   ├── app.py
+│   ├── ser_model.py
+│   ├── requirements.txt
+│   ├── .env
+│   └── model/
+│       └── emotion_model.pkl
+├── frontend/
+│   ├── index.html
+│   ├── app.js
+│   └── styles.css
+└── README.md
 ```
 
----
+## Environment Setup
 
-## 🛠️ Technologies Used
+Create `backend/.env` with:
 
-* Python
-* NumPy
-* Librosa
-* SoundFile
-* Scikit-learn
-* Matplotlib
-* Seaborn
-
----
-
-## ⚙️ Features Extracted
-
-* **MFCC (Mel Frequency Cepstral Coefficients)** – captures audio characteristics
-* **Chroma Features** – represents pitch class
-* **Mel Spectrogram** – frequency distribution
-
----
-
-## 🧠 Model Used
-
-* **MLPClassifier (Multi-Layer Perceptron)**
-
-  * Hidden layer: 300 neurons
-  * Learning rate: Adaptive
-  * Max iterations: 500
-
----
-
-## 🔄 Workflow
-
-1. Load audio files
-2. Extract features (MFCC, Chroma, Mel)
-3. Handle corrupt/short audio files
-4. Ensure consistent feature vector length
-5. Split dataset into training and testing sets
-6. Train the model
-7. Predict emotions
-8. Evaluate performance
-
----
-
-## 📊 Results
-
-* Achieved accuracy: **~70–75%** *(may vary depending on preprocessing and data split)*
-
----
-
-## 🚧 Challenges Faced
-
-* Handling **very short or corrupted audio files**
-* Fixing **feature dimension mismatch errors**
-* Ensuring **consistent feature vector size**
-* Adapting to **librosa API changes**
-
----
-
-## 💡 Key Learnings
-
-* Importance of **data preprocessing in audio ML**
-* Feature consistency is critical for ML models
-* Real-world datasets contain **noise and irregularities**
-* Debugging pipelines is as important as model building
-
----
-
-## 🚀 Future Improvements
-
-* Use deep learning models (CNN / LSTM)
-* Improve accuracy with advanced feature engineering
-* Add real-time emotion detection
-* Build a web application interface
-
----
-
-## 📁 Project Structure
-
-```
-Speech_Emotion_Recognition/
-│
-├── data/
-├── notebooks/
-│   └── analysis.ipynb
-├── src/
-│   └── feature_extraction.py
-├── README.md
+```env
+MONGO_URI=your_mongodb_connection_string
+MONGO_DB_NAME=mindflow_journal
 ```
 
----
+Example local MongoDB URI:
 
-## ▶️ How to Run
+```env
+MONGO_URI=mongodb://127.0.0.1:27017
+```
 
-### 1. Install backend dependencies
+## Run the App
+
+### 1) Install dependencies
 
 ```bash
 pip install -r backend/requirements.txt
 ```
 
-### 2. Start backend API
+### 2) Start backend server
+
+From project root:
 
 ```bash
-uvicorn backend.app:app --reload
+python -m uvicorn backend.app:app --reload
 ```
 
----
+### 3) Open in browser
 
-### 3. Open frontend
+Visit:
 
-Open `frontend/index.html` in your browser.
+`http://127.0.0.1:8000`
 
-Then:
+### 4) Use the flow
 
-1. Click **Check Health**
-2. Click **Train** (first time)
-3. Upload a `.wav` file and click **Predict**
+1. Register a new account (first time) or log in.
+2. Record your voice note.
+3. Let voice-to-text fill your journal content.
+4. Emotion is predicted from audio and aligned with mood buttons.
+5. Save the entry and review trend history.
 
----
+## Model Notes
 
-## 👤 Author
+- The SER model uses extracted features:
+  - MFCC
+  - Chroma
+  - Mel spectrogram
+- Classifier: `MLPClassifier`
+- Saved model path:
+  - `backend/model/emotion_model.pkl`
 
-**Betina Kuriakose**
-Computer Science & Data Science Student
+If you need to retrain, use your training notebook/pipeline and overwrite the saved model file.
 
----
+## Database Collections
 
-## ⭐ Acknowledgment
+Mindflow currently uses these MongoDB collections:
 
-This project is inspired by real-world applications such as call centers and virtual assistants, where understanding human emotions improves user interaction and experience.
+- `users`
+  - `username`
+  - `password_hash`
+  - `created_at`
+- `entries`
+  - `id`
+  - `username`
+  - `title`
+  - `transcript`
+  - `emotion`
+  - `confidence`
+  - `created_at`
+
+## API Overview
+
+- `POST /auth/register`
+- `POST /auth/login`
+- `GET /health`
+- `POST /predict`
+- `POST /journal/entries`
+- `GET /journal/entries`
+- `GET /journal/trends`
+
+## Important Notes
+
+- Voice-to-text uses browser speech recognition APIs; support may vary by browser.
+- Passwords are stored as hashed values, not plain text.
+- Keep `backend/.env` private and never commit credentials.
+
+## Future Improvements
+
+- JWT-based protected routes
+- Better NLP sentiment/content understanding
+- Better trend visualizations
+- Export journal entries
+
+## Author
+
+Betina Kuriakose
