@@ -34,8 +34,15 @@ let recordedWavBlob = null;
 let lastPrediction = null;
 let selectedMood = null;
 let currentUsername = null;
+let speechRecognition = null;
+let liveTranscript = "";
 
 const moodConfig = {
+  neutral: {
+    text: "A steady day? Good time for a quick reflection.",
+    linkLabel: "Quick Link: Daily gratitude prompt",
+    linkHref: "https://positivepsychology.com/gratitude-journal-prompts/",
+  },
   sad: {
     text: "Feeling a bit heavy?",
     linkLabel: "Quick Link: 5-min Breathing",
@@ -56,6 +63,38 @@ const moodConfig = {
     linkLabel: "Quick Link: Wins of the Week",
     linkHref: "https://jamesclear.com/three-questions",
   },
+  angry: {
+    text: "Feeling a bit heated? Let's find a healthy outlet.",
+    linkLabel: "Quick Link: 2-minute venting note",
+    linkHref: "https://www.youtube.com/results?search_query=2+minute+guided+journaling+venting",
+  },
+  fearful: {
+    text: "Feeling uneasy? You're in a safe space right now.",
+    linkLabel: "Quick Link: 4-7-8 grounding breathing",
+    linkHref: "https://www.youtube.com/results?search_query=4-7-8+breathing+technique",
+  },
+  disgust: {
+    text: "Something rubbing you the wrong way? Let's unpack it.",
+    linkLabel: "Quick Link: Trigger deep-dive prompt",
+    linkHref: "https://positivepsychology.com/journaling-prompts/",
+  },
+  surprised: {
+    text: "A sudden shift? Journal it while it's fresh!",
+    linkLabel: "Quick Link: Good or bad surprise?",
+    linkHref: "https://www.psychologytoday.com/us/blog/questions-and-answers/201912/the-power-reflective-questions",
+  },
+};
+
+const textMoodKeywords = {
+  neutral: ["normal", "steady", "average", "usual", "regular", "fine"],
+  happy: ["happy", "great", "excited", "grateful", "joy", "smile", "good", "amazing", "win"],
+  calm: ["calm", "peaceful", "relaxed", "stable", "okay", "balanced", "fine", "content"],
+  sad: ["sad", "down", "lonely", "tired", "hopeless", "cry", "upset", "heavy", "hurt"],
+  anxious: ["anxious", "stress", "worried", "panic", "nervous", "overwhelmed", "racing", "fear"],
+  angry: ["angry", "mad", "furious", "annoyed", "irritated", "rage", "frustrated"],
+  fearful: ["fearful", "scared", "afraid", "terrified", "uneasy"],
+  disgust: ["disgust", "gross", "revolting", "nasty", "repulsed"],
+  surprised: ["surprised", "shocked", "unexpected", "sudden", "wow"],
 };
 
 function apiBase() {
@@ -67,6 +106,87 @@ function apiBase() {
 
 function setStatus(message) {
   if (statusMessage) statusMessage.textContent = message;
+}
+
+function normalizeVoiceMood(emotion) {
+  const mood = String(emotion || "").toLowerCase();
+  if (moodConfig[mood]) return mood;
+  if (mood === "fear") return "fearful";
+  return null;
+}
+
+function inferTextMood(text) {
+  const cleaned = String(text || "").toLowerCase();
+  if (!cleaned.trim()) return null;
+
+  let bestMood = null;
+  let bestScore = 0;
+
+  Object.entries(textMoodKeywords).forEach(([mood, words]) => {
+    const score = words.reduce((sum, word) => sum + (cleaned.includes(word) ? 1 : 0), 0);
+    if (score > bestScore) {
+      bestScore = score;
+      bestMood = mood;
+    }
+  });
+
+  return bestScore > 0 ? bestMood : null;
+}
+
+function chooseFinalMood(voiceEmotion, transcriptText) {
+  const voiceMood = normalizeVoiceMood(voiceEmotion);
+  const textMood = inferTextMood(transcriptText);
+  // Give transcript slightly higher priority when content is expressive.
+  return textMood || voiceMood;
+}
+
+function createSpeechRecognition() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) return null;
+  const recognition = new SpeechRecognition();
+  recognition.lang = "en-US";
+  recognition.interimResults = true;
+  recognition.continuous = true;
+  return recognition;
+}
+
+function startSpeechToText() {
+  speechRecognition = createSpeechRecognition();
+  if (!speechRecognition) {
+    setStatus("Recording started. Live speech-to-text is not supported on this browser.");
+    return;
+  }
+
+  liveTranscript = "";
+  speechRecognition.onresult = (event) => {
+    let transcript = "";
+    for (let i = 0; i < event.results.length; i += 1) {
+      transcript += `${event.results[i][0].transcript} `;
+    }
+    liveTranscript = transcript.trim();
+    if (journalText && liveTranscript) {
+      journalText.value = liveTranscript;
+    }
+  };
+
+  speechRecognition.onerror = () => {
+    // Non-fatal; audio emotion inference still works.
+  };
+
+  try {
+    speechRecognition.start();
+  } catch {
+    // ignore repeated-start errors
+  }
+}
+
+function stopSpeechToText() {
+  if (!speechRecognition) return;
+  try {
+    speechRecognition.stop();
+  } catch {
+    // ignore stop errors
+  }
 }
 
 async function safeFetch(url, options = {}) {
@@ -146,15 +266,19 @@ async function convertToWav(audioBlob) {
   return wavBlob;
 }
 
-async function predictWithBlob(blob, filename) {
+async function predictWithBlob(blob, filename, transcriptText = "") {
   setStatus("Running emotion prediction...");
   const formData = new FormData();
   formData.append("file", blob, filename);
   const data = await safeFetch(`${apiBase()}/predict`, { method: "POST", body: formData });
   lastPrediction = data;
-  const predictedMood = String(data.emotion || "").toLowerCase();
-  if (moodConfig[predictedMood]) applyMoodSelection(predictedMood);
-  setStatus(`Detected mood: ${data.emotion}`);
+  const finalMood = chooseFinalMood(data.emotion, transcriptText);
+  if (finalMood && moodConfig[finalMood]) {
+    applyMoodSelection(finalMood);
+    setStatus(`Detected mood: voice=${data.emotion}, content=${inferTextMood(transcriptText) || "none"} -> final=${finalMood}`);
+  } else {
+    setStatus(`Detected voice emotion: ${data.emotion}`);
+  }
 }
 
 async function loadEntries() {
@@ -172,10 +296,62 @@ async function loadEntries() {
         <div><strong>${entry.title || "Voice note"}</strong></div>
         <div class="entry-meta">${entry.emotion} • ${formatDateTime(entry.created_at)}</div>
         <div>${entry.transcript}</div>
+        <div class="entry-actions">
+          <button type="button" class="entry-btn edit" data-action="edit" data-id="${entry.id}">Edit</button>
+          <button type="button" class="entry-btn delete" data-action="delete" data-id="${entry.id}">Delete</button>
+        </div>
       </article>
     `).join("");
   } catch (error) {
     setStatus(`Could not load entries: ${error.message}`);
+  }
+}
+
+async function handleEditEntry(entryId) {
+  const title = window.prompt("Update title:");
+  if (title === null) return;
+  const transcript = window.prompt("Update journal text:");
+  if (transcript === null || !transcript.trim()) return;
+  const emotion = window.prompt(
+    "Update emotion (neutral/calm/happy/sad/anxious/angry/fearful/disgust/surprised):",
+    selectedMood || "neutral"
+  );
+  if (emotion === null || !emotion.trim()) return;
+
+  try {
+    await safeFetch(`${apiBase()}/journal/entries/${encodeURIComponent(entryId)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: currentUsername,
+        title: title.trim(),
+        transcript: transcript.trim(),
+        emotion: emotion.trim().toLowerCase(),
+        confidence: null,
+      }),
+    });
+    setStatus("Entry updated.");
+    if (moodConfig[emotion.trim().toLowerCase()]) {
+      applyMoodSelection(emotion.trim().toLowerCase());
+    }
+    await loadEntries();
+  } catch (error) {
+    setStatus(`Update failed: ${error.message}`);
+  }
+}
+
+async function handleDeleteEntry(entryId) {
+  const confirmed = window.confirm("Delete this journal entry?");
+  if (!confirmed) return;
+  try {
+    await safeFetch(
+      `${apiBase()}/journal/entries/${encodeURIComponent(entryId)}?username=${encodeURIComponent(currentUsername)}`,
+      { method: "DELETE" }
+    );
+    setStatus("Entry deleted.");
+    await loadEntries();
+  } catch (error) {
+    setStatus(`Delete failed: ${error.message}`);
   }
 }
 
@@ -247,6 +423,7 @@ function wireInteractions() {
       recordingPreview.removeAttribute("src");
       predictRecordedBtn.disabled = true;
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      startSpeechToText();
       mediaRecorder = new MediaRecorder(stream);
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) recordedChunks.push(event.data);
@@ -255,13 +432,14 @@ function wireInteractions() {
         if (!recordedChunks.length) return;
         const recordedBlob = new Blob(recordedChunks, { type: mediaRecorder.mimeType });
         recordedWavBlob = await convertToWav(recordedBlob);
+        stopSpeechToText();
         recordingPreview.src = URL.createObjectURL(recordedWavBlob);
         predictRecordedBtn.disabled = false;
         stream.getTracks().forEach((track) => track.stop());
         startRecordBtn.disabled = false;
         stopRecordBtn.disabled = true;
         recordLabel.textContent = "Record Voice Note";
-        await predictWithBlob(recordedWavBlob, "recorded.wav");
+        await predictWithBlob(recordedWavBlob, "recorded.wav", liveTranscript || journalText.value || "");
       };
       mediaRecorder.start();
       startRecordBtn.disabled = true;
@@ -278,7 +456,7 @@ function wireInteractions() {
   predictRecordedBtn.addEventListener("click", async () => {
     if (!recordedWavBlob) return;
     try {
-      await predictWithBlob(recordedWavBlob, "recorded.wav");
+      await predictWithBlob(recordedWavBlob, "recorded.wav", journalText.value || "");
     } catch (error) {
       setStatus(`Prediction error: ${error.message}`);
     }
@@ -288,7 +466,7 @@ function wireInteractions() {
     const file = audioFileInput.files?.[0];
     if (!file) return;
     try {
-      await predictWithBlob(file, file.name);
+      await predictWithBlob(file, file.name, journalText.value || "");
     } catch (error) {
       setStatus(`Prediction error: ${error.message}`);
     }
@@ -300,7 +478,7 @@ function wireInteractions() {
       setStatus("Please write your journal text before saving.");
       return;
     }
-    const emotion = lastPrediction?.emotion || selectedMood;
+    const emotion = selectedMood || normalizeVoiceMood(lastPrediction?.emotion) || lastPrediction?.emotion;
     if (!emotion) {
       setStatus("Select a mood or run voice prediction before saving.");
       return;
@@ -340,6 +518,19 @@ function wireInteractions() {
 
   refreshTrendsBtn.addEventListener("click", async () => loadTrends());
   refreshEntriesBtn.addEventListener("click", async () => loadEntries());
+
+  entriesList.addEventListener("click", async (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    const action = target.getAttribute("data-action");
+    const entryId = target.getAttribute("data-id");
+    if (!action || !entryId) return;
+    if (action === "edit") {
+      await handleEditEntry(entryId);
+    } else if (action === "delete") {
+      await handleDeleteEntry(entryId);
+    }
+  });
 }
 
 window.addEventListener("load", async () => {
