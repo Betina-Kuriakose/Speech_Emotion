@@ -14,8 +14,12 @@ from pymongo import ASCENDING, DESCENDING, MongoClient
 from pymongo.collection import Collection
 from pymongo.errors import DuplicateKeyError
 from pydantic import BaseModel, Field
+from openai import OpenAI
 
-from .ser_model import SpeechEmotionModel
+try:
+    from .ser_model import SpeechEmotionModel
+except ImportError:
+    from ser_model import SpeechEmotionModel
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -45,13 +49,19 @@ mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=3000)
 mongo_db = mongo_client[MONGO_DB_NAME]
 users_collection: Collection = mongo_db["users"]
 entries_collection: Collection = mongo_db["my_journal"]
+chat_collection: Collection = mongo_db["chat_history"]
 
 try:
     users_collection.create_index([("username", ASCENDING)], unique=True)
     entries_collection.create_index([("username", ASCENDING), ("created_at", DESCENDING)])
+    chat_collection.create_index([("username", ASCENDING), ("created_at", DESCENDING)])
 except Exception:
     # Keep app booting even if MongoDB is currently unavailable.
     pass
+
+# Initialize OpenAI client
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
 
 class TrainRequest(BaseModel):
@@ -78,6 +88,13 @@ class JournalEntryUpdate(BaseModel):
     transcript: str = Field(..., min_length=1, max_length=1000)
     emotion: str = Field(..., min_length=1, max_length=40)
     confidence: Optional[float] = None
+
+
+class ChatMessageRequest(BaseModel):
+    username: str = Field(..., min_length=3, max_length=40)
+    message: str = Field(..., min_length=1, max_length=500)
+    emotion: str = Field(..., min_length=1, max_length=40)
+    context: Optional[str] = Field(default=None, max_length=1000)
 
 
 def _check_mongo() -> bool:
@@ -110,6 +127,43 @@ def _parse_iso_datetime(value: str) -> datetime:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc)
+
+
+def _get_emotion_system_prompt(emotion: str, context: Optional[str] = None) -> str:
+    """Generate emotion-aware system prompt for the chatbot."""
+    emotion = str(emotion or "").lower()
+    
+    emotion_prompts = {
+        "happy": "The user is feeling happy and positive. Encourage them to reflect on what's bringing joy and how they can maintain this positive momentum.",
+        "calm": "The user is feeling calm and peaceful. Help them reflect mindfully and explore ways to maintain this tranquility.",
+        "neutral": "The user is feeling neutral. Help them explore their current state without judgment and find meaningful insights.",
+        "sad": "The user is feeling sad. Be empathetic and compassionate. Offer gentle support and encourage them to explore their feelings without judgment.",
+        "anxious": "The user is feeling anxious and worried. Help them ground themselves in the present moment and explore what's causing the anxiety.",
+        "angry": "The user is feeling angry or frustrated. Validate their feelings and help them channel this energy constructively.",
+        "fearful": "The user is feeling fearful or scared. Create a safe space for them and help them explore what they're afraid of.",
+        "disgust": "The user is feeling disgusted or repulsed. Help them understand the source and explore how to address it.",
+        "surprised": "The user is feeling surprised or shocked. Help them process this unexpected emotion and understand its implications.",
+    }
+    
+    base_prompt = emotion_prompts.get(emotion, "The user is reaching out. Be a supportive and empathetic journal companion.")
+    
+    if context:
+        base_prompt += f"\n\nAdditional context from their journal: {context}"
+    
+    return f"""You are Mindflow, an empathetic and supportive AI journal companion. Your role is to help users reflect on their emotions and experiences with care and wisdom.
+
+{base_prompt}
+
+Guidelines:
+- Be warm, empathetic, and non-judgmental
+- Ask thoughtful follow-up questions to help them explore their feelings deeper
+- Keep responses concise (2-3 sentences max unless they ask for more)
+- Avoid giving unsolicited advice unless appropriate
+- Validate their emotions
+- If they mention mental health concerns, gently suggest professional help if needed
+- Remember this is a journaling space, not therapy
+
+Respond naturally as if continuing a conversation with a trusted friend."""
 
 
 @app.post("/auth/register")
@@ -364,6 +418,108 @@ def journal_trends(username: str, weeks: int = 4) -> Dict[str, Any]:
         "prolonged_positive_absence": prolonged_absence,
         "wellbeing_prompts": prompts,
         "weekly": weekly,
+    }
+
+
+@app.post("/chat")
+async def chat(payload: ChatMessageRequest) -> Dict[str, Any]:
+    if not openai_client:
+        raise HTTPException(status_code=500, detail="OpenAI API is not configured. Set OPENAI_API_KEY in .env.")
+    
+    if not _check_mongo():
+        raise HTTPException(status_code=500, detail="MongoDB is not reachable.")
+    
+    normalized_username = payload.username.strip().lower()
+    user_exists = users_collection.find_one({"username": normalized_username}, {"_id": 1})
+    if not user_exists:
+        raise HTTPException(status_code=404, detail="User not found.")
+    
+    try:
+        # Get conversation history for context
+        history = list(
+            chat_collection.find(
+                {"username": normalized_username},
+                {"_id": 0, "role": 1, "content": 1}
+            ).sort("created_at", DESCENDING).limit(10)
+        )
+        history.reverse()  # Oldest first for API
+        
+        # Build messages for API
+        messages = []
+        for msg in history:
+            messages.append({
+                "role": msg.get("role", "user"),
+                "content": msg.get("content", "")
+            })
+        
+        # Add current message
+        messages.append({
+            "role": "user",
+            "content": payload.message
+        })
+        
+        # Get emotion-aware system prompt
+        system_prompt = _get_emotion_system_prompt(payload.emotion, payload.context)
+        
+        # Call OpenAI API
+        response = openai_client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            system=system_prompt,
+            messages=messages,
+            temperature=0.7,
+            max_tokens=300
+        )
+        
+        assistant_message = response.choices[0].message.content
+        
+        # Store conversation in MongoDB
+        user_message_doc = {
+            "id": f"chat-{int(datetime.now(timezone.utc).timestamp() * 1000)}-{secrets.token_hex(3)}",
+            "username": normalized_username,
+            "role": "user",
+            "content": payload.message,
+            "emotion": payload.emotion.strip().lower(),
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        chat_collection.insert_one(user_message_doc)
+        
+        assistant_message_doc = {
+            "id": f"chat-{int(datetime.now(timezone.utc).timestamp() * 1000)}-{secrets.token_hex(3)}",
+            "username": normalized_username,
+            "role": "assistant",
+            "content": assistant_message,
+            "emotion": payload.emotion.strip().lower(),
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        chat_collection.insert_one(assistant_message_doc)
+        
+        return {
+            "message": "Chat response generated.",
+            "response": assistant_message,
+            "emotion": payload.emotion.strip().lower()
+        }
+        
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Chat failed: {str(exc)}") from exc
+
+
+@app.get("/chat/history")
+def get_chat_history(username: str, limit: int = 50) -> Dict[str, Any]:
+    if not _check_mongo():
+        raise HTTPException(status_code=500, detail="MongoDB is not reachable.")
+    
+    normalized_username = username.strip().lower()
+    safe_limit = max(1, min(limit, 200))
+    docs = list(
+        chat_collection.find(
+            {"username": normalized_username},
+            {"_id": 0}
+        ).sort("created_at", DESCENDING).limit(safe_limit)
+    )
+    docs.reverse()  # Oldest first
+    return {
+        "count": len(docs),
+        "items": docs,
     }
 
 
