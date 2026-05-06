@@ -29,6 +29,13 @@ const nudgeText = document.getElementById("nudgeText");
 const quickLink = document.getElementById("quickLink");
 const entryTitle = document.getElementById("entryTitle");
 
+// Chatbot DOM elements
+const chatbotPanel = document.getElementById("chatbot-panel");
+const chatMessages = document.getElementById("chatMessages");
+const chatInput = document.getElementById("chatInput");
+const sendChatBtn = document.getElementById("sendChatBtn");
+const closeChatBtn = document.getElementById("closeChatBtn");
+
 let mediaRecorder = null;
 let recordedChunks = [];
 let recordedWavBlob = null;
@@ -37,6 +44,7 @@ let selectedMood = null;
 let currentUsername = null;
 let speechRecognition = null;
 let liveTranscript = "";
+let lastDetectedEmotion = null;
 
 const moodConfig = {
   neutral: {
@@ -274,11 +282,95 @@ async function predictWithBlob(blob, filename, transcriptText = "") {
   const data = await safeFetch(`${apiBase()}/predict`, { method: "POST", body: formData });
   lastPrediction = data;
   const finalMood = chooseFinalMood(data.emotion, transcriptText);
+  lastDetectedEmotion = finalMood || data.emotion;
   if (finalMood && moodConfig[finalMood]) {
     applyMoodSelection(finalMood);
     setStatus(`Detected mood: voice=${data.emotion}, content=${inferTextMood(transcriptText) || "none"} -> final=${finalMood}`);
   } else {
     setStatus(`Detected voice emotion: ${data.emotion}`);
+  }
+  // Automatically open chatbot after prediction
+  if (currentUsername && lastDetectedEmotion) {
+    openChatbot();
+  }
+}
+
+// Chatbot Functions
+function openChatbot() {
+  if (chatbotPanel) {
+    chatbotPanel.classList.remove("hidden");
+    chatMessages.innerHTML = "";
+    chatInput.value = "";
+    chatInput.focus();
+    // Add initial greeting from assistant
+    const emotion = lastDetectedEmotion || selectedMood || "neutral";
+    const greeting = getInitialGreeting(emotion);
+    displayChatMessage("assistant", greeting);
+  }
+}
+
+function closeChatbot() {
+  if (chatbotPanel) {
+    chatbotPanel.classList.add("hidden");
+  }
+}
+
+function getInitialGreeting(emotion) {
+  const greetings = {
+    happy: "That's wonderful! I'm so glad you're feeling happy right now. What's making you feel this way?",
+    calm: "It sounds like you're in a peaceful state. What are you grateful for today?",
+    neutral: "How are you doing today? What's on your mind?",
+    sad: "I'm here for you. Would you like to talk about what's making you feel this way?",
+    anxious: "I can sense some worry. Take a breath—you're safe here. What's racing through your mind?",
+    angry: "I can feel the intensity. It's okay to feel angry. What triggered this feeling?",
+    fearful: "You're in a safe space. Sometimes fear can teach us something important. What are you afraid of?",
+    disgust: "Something's clearly bothering you. I'm listening. What is it?",
+    surprised: "What a moment! Tell me what just happened.",
+  };
+  return greetings[emotion] || greetings.neutral;
+}
+
+function displayChatMessage(role, content) {
+  const messageDiv = document.createElement("div");
+  messageDiv.className = `chat-message ${role}`;
+  const bubble = document.createElement("div");
+  bubble.className = "chat-bubble";
+  bubble.textContent = content;
+  messageDiv.appendChild(bubble);
+  chatMessages.appendChild(messageDiv);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+async function sendChatMessage() {
+  const userMessage = chatInput.value.trim();
+  if (!userMessage || !currentUsername || !lastDetectedEmotion) return;
+
+  // Display user message
+  displayChatMessage("user", userMessage);
+  chatInput.value = "";
+  chatInput.disabled = true;
+  sendChatBtn.disabled = true;
+
+  try {
+    const journalContext = journalText.value.trim().substring(0, 500) || undefined;
+    const response = await safeFetch(`${apiBase()}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: currentUsername,
+        message: userMessage,
+        emotion: lastDetectedEmotion,
+        context: journalContext,
+      }),
+    });
+
+    displayChatMessage("assistant", response.response);
+  } catch (error) {
+    displayChatMessage("assistant", `I encountered an issue: ${error.message}. Please try again.`);
+  } finally {
+    chatInput.disabled = false;
+    sendChatBtn.disabled = false;
+    chatInput.focus();
   }
 }
 
@@ -552,6 +644,22 @@ function wireInteractions() {
       await handleDeleteEntry(entryId);
     }
   });
+
+  // Chatbot event listeners
+  if (sendChatBtn) {
+    sendChatBtn.addEventListener("click", () => sendChatMessage());
+  }
+  if (chatInput) {
+    chatInput.addEventListener("keypress", (event) => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        sendChatMessage();
+      }
+    });
+  }
+  if (closeChatBtn) {
+    closeChatBtn.addEventListener("click", () => closeChatbot());
+  }
 }
 
 window.addEventListener("load", async () => {
