@@ -1,3 +1,8 @@
 data/
 *.zip
 .ipynb_checkpoints/
+.env
+backend/.env
+__pycache__/
+*.pyc
+*.pyo
