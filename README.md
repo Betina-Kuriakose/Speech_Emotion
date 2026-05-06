@@ -64,7 +64,7 @@ Speech_Emotion/
 │   ├── index.html
 │   ├── styles.css
 │   ├── app.js
-│   └── image1.png
+│  
 └── README.md
 ```
 
@@ -120,7 +120,17 @@ Visit:
 6. Edit/Delete history if needed
 7. Use avatar button to switch user
 
----
+## Model Notes
+
+- The SER model uses extracted features:
+  - MFCC
+  - Chroma
+  - Mel spectrogram
+- Classifier: `MLPClassifier`
+- Saved model path:
+  - `backend/model/emotion_model.pkl`
+
+If you need to retrain, use your training notebook/pipeline and overwrite the saved model file.
 
 ## Database Collections
 

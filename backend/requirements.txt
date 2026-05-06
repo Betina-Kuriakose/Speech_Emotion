@@ -8,3 +8,4 @@ scikit-learn
 pymongo
 python-dotenv
 dnspython
+openai
