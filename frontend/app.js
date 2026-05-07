@@ -1,3 +1,122 @@
+// === DOM ELEMENT DECLARATIONS ===
+const loginView = document.getElementById("loginView");
+const journalView = document.getElementById("journalView");
+const loginUsername = document.getElementById("loginUsername");
+const loginPassword = document.getElementById("loginPassword");
+const loginBtn = document.getElementById("loginBtn");
+const registerBtn = document.getElementById("registerBtn");
+const loginError = document.getElementById("loginError");
+const welcomeText = document.getElementById("welcomeText");
+const statusMessage = document.getElementById("statusMessage");
+const switchUserBtn = document.getElementById("switchUserBtn");
+
+const apiBaseInput = document.getElementById("apiBaseUrl");
+const audioFileInput = document.getElementById("audioFile");
+const startRecordBtn = document.getElementById("startRecordBtn");
+const stopRecordBtn = document.getElementById("stopRecordBtn");
+const predictRecordedBtn = document.getElementById("predictRecordedBtn");
+const predictFileBtn = document.getElementById("predictFileBtn");
+const recordingPreview = document.getElementById("recordingPreview");
+const healthBtn = document.getElementById("healthBtn");
+const journalText = document.getElementById("journalText");
+const saveEntryBtn = document.getElementById("saveEntryBtn");
+const refreshTrendsBtn = document.getElementById("refreshTrendsBtn");
+const refreshEntriesBtn = document.getElementById("refreshEntriesBtn");
+const entriesList = document.getElementById("entriesList");
+const recordVoiceBtn = document.getElementById("recordVoiceBtn");
+const recordLabel = document.getElementById("recordLabel");
+const entryDate = document.getElementById("entryDate");
+const nudgeText = document.getElementById("nudgeText");
+const quickLink = document.getElementById("quickLink");
+const entryTitle = document.getElementById("entryTitle");
+
+// Chatbot DOM elements
+const chatbotPanel = document.getElementById("chatbot-panel");
+const chatMessages = document.getElementById("chatMessages");
+const chatInput = document.getElementById("chatInput");
+const sendChatBtn = document.getElementById("sendChatBtn");
+const closeChatBtn = document.getElementById("closeChatBtn");
+const chatMicBtn = document.getElementById("chatMicBtn");
+const chatRecordingPreview = document.getElementById("chatRecordingPreview");
+
+// === STATE VARIABLES ===
+let mediaRecorder = null;
+let recordedChunks = [];
+let recordedWavBlob = null;
+let lastPrediction = null;
+let selectedMood = null;
+let currentUsername = null;
+let speechRecognition = null;
+let liveTranscript = "";
+let lastDetectedEmotion = null;
+
+// Chatbot microphone recording state
+let chatMediaRecorder = null;
+let chatRecordedChunks = [];
+let chatRecordingActive = false;
+
+// === CONFIGURATION ===
+const moodConfig = {
+  neutral: {
+    text: "A steady day? Good time for a quick reflection.",
+    linkLabel: "Quick Link: Daily gratitude prompt",
+    linkHref: "https://positivepsychology.com/gratitude-journal-prompts/",
+  },
+  sad: {
+    text: "Feeling a bit heavy?",
+    linkLabel: "Quick Link: 5-min Breathing",
+    linkHref: "https://www.youtube.com/results?search_query=5+minute+guided+breathing+exercise",
+  },
+  anxious: {
+    text: "Mind racing? Let's ground yourself.",
+    linkLabel: "Quick Link: 5-4-3-2-1 Grounding",
+    linkHref: "https://www.youtube.com/results?search_query=5-4-3-2-1+grounding+technique",
+  },
+  calm: {
+    text: "Glad you're finding peace today. Ready to reflect?",
+    linkLabel: "Quick Link: Gratitude Prompt",
+    linkHref: "https://www.verywellmind.com/what-is-gratitude-5207792",
+  },
+  happy: {
+    text: "Great to hear! Keep the positive momentum going.",
+    linkLabel: "Quick Link: Wins of the Week",
+    linkHref: "https://jamesclear.com/three-questions",
+  },
+  angry: {
+    text: "Feeling a bit heated? Let's find a healthy outlet.",
+    linkLabel: "Quick Link: 2-minute venting note",
+    linkHref: "https://www.youtube.com/results?search_query=2+minute+guided+journaling+venting",
+  },
+  fearful: {
+    text: "Feeling uneasy? You're in a safe space right now.",
+    linkLabel: "Quick Link: 4-7-8 grounding breathing",
+    linkHref: "https://www.youtube.com/results?search_query=4-7-8+breathing+technique",
+  },
+  disgust: {
+    text: "Something rubbing you the wrong way? Let's unpack it.",
+    linkLabel: "Quick Link: Trigger deep-dive prompt",
+    linkHref: "https://positivepsychology.com/journaling-prompts/",
+  },
+  surprised: {
+    text: "A sudden shift? Journal it while it's fresh!",
+    linkLabel: "Quick Link: Good or bad surprise?",
+    linkHref: "https://www.psychologytoday.com/us/blog/questions-and-answers/201912/the-power-reflective-questions",
+  },
+};
+
+const textMoodKeywords = {
+  neutral: ["normal", "steady", "average", "usual", "regular", "fine"],
+  happy: ["happy", "great", "excited", "grateful", "joy", "smile", "good", "amazing", "win"],
+  calm: ["calm", "peaceful", "relaxed", "stable", "okay", "balanced", "fine", "content"],
+  sad: ["sad", "down", "lonely", "tired", "hopeless", "cry", "upset", "heavy", "hurt"],
+  anxious: ["anxious", "stress", "worried", "panic", "nervous", "overwhelmed", "racing", "fear"],
+  angry: ["angry", "mad", "furious", "annoyed", "irritated", "rage", "frustrated"],
+  fearful: ["fearful", "scared", "afraid", "terrified", "uneasy"],
+  disgust: ["disgust", "gross", "revolting", "nasty", "repulsed"],
+  surprised: ["surprised", "shocked", "unexpected", "sudden", "wow"],
+};
+
+// === FUNCTIONS ===
 // --- Chatbot microphone recording logic ---
 async function startChatRecording() {
   if (chatRecordingActive) return;
@@ -60,130 +179,6 @@ function stopChatRecording() {
     chatMicBtn._recognition = null;
   }
 }
-// Chatbot mic button event listener
-if (chatMicBtn) {
-  chatMicBtn.addEventListener("click", () => {
-    if (!chatRecordingActive) {
-      startChatRecording();
-    } else {
-      stopChatRecording();
-    }
-  });
-}
-const loginView = document.getElementById("loginView");
-const journalView = document.getElementById("journalView");
-const loginUsername = document.getElementById("loginUsername");
-const loginPassword = document.getElementById("loginPassword");
-const loginBtn = document.getElementById("loginBtn");
-const registerBtn = document.getElementById("registerBtn");
-const loginError = document.getElementById("loginError");
-const welcomeText = document.getElementById("welcomeText");
-const statusMessage = document.getElementById("statusMessage");
-const switchUserBtn = document.getElementById("switchUserBtn");
-
-const apiBaseInput = document.getElementById("apiBaseUrl");
-const audioFileInput = document.getElementById("audioFile");
-const startRecordBtn = document.getElementById("startRecordBtn");
-const stopRecordBtn = document.getElementById("stopRecordBtn");
-const predictRecordedBtn = document.getElementById("predictRecordedBtn");
-const predictFileBtn = document.getElementById("predictFileBtn");
-const recordingPreview = document.getElementById("recordingPreview");
-const healthBtn = document.getElementById("healthBtn");
-const journalText = document.getElementById("journalText");
-const saveEntryBtn = document.getElementById("saveEntryBtn");
-const refreshTrendsBtn = document.getElementById("refreshTrendsBtn");
-const refreshEntriesBtn = document.getElementById("refreshEntriesBtn");
-const entriesList = document.getElementById("entriesList");
-const recordVoiceBtn = document.getElementById("recordVoiceBtn");
-const recordLabel = document.getElementById("recordLabel");
-const entryDate = document.getElementById("entryDate");
-const nudgeText = document.getElementById("nudgeText");
-const quickLink = document.getElementById("quickLink");
-const entryTitle = document.getElementById("entryTitle");
-
-// Chatbot DOM elements
-const chatbotPanel = document.getElementById("chatbot-panel");
-const chatMessages = document.getElementById("chatMessages");
-const chatInput = document.getElementById("chatInput");
-const sendChatBtn = document.getElementById("sendChatBtn");
-const closeChatBtn = document.getElementById("closeChatBtn");
-const chatMicBtn = document.getElementById("chatMicBtn");
-const chatRecordingPreview = document.getElementById("chatRecordingPreview");
-
-let mediaRecorder = null;
-let recordedChunks = [];
-let recordedWavBlob = null;
-let lastPrediction = null;
-let selectedMood = null;
-let currentUsername = null;
-let speechRecognition = null;
-let liveTranscript = "";
-let lastDetectedEmotion = null;
-
-// Chatbot microphone recording state
-let chatMediaRecorder = null;
-let chatRecordedChunks = [];
-let chatRecordingActive = false;
-
-const moodConfig = {
-  neutral: {
-    text: "A steady day? Good time for a quick reflection.",
-    linkLabel: "Quick Link: Daily gratitude prompt",
-    linkHref: "https://positivepsychology.com/gratitude-journal-prompts/",
-  },
-  sad: {
-    text: "Feeling a bit heavy?",
-    linkLabel: "Quick Link: 5-min Breathing",
-    linkHref: "https://www.youtube.com/results?search_query=5+minute+guided+breathing+exercise",
-  },
-  anxious: {
-    text: "Mind racing? Let's ground yourself.",
-    linkLabel: "Quick Link: 5-4-3-2-1 Grounding",
-    linkHref: "https://www.youtube.com/results?search_query=5-4-3-2-1+grounding+technique",
-  },
-  calm: {
-    text: "Glad you're finding peace today. Ready to reflect?",
-    linkLabel: "Quick Link: Gratitude Prompt",
-    linkHref: "https://www.verywellmind.com/what-is-gratitude-5207792",
-  },
-  happy: {
-    text: "Great to hear! Keep the positive momentum going.",
-    linkLabel: "Quick Link: Wins of the Week",
-    linkHref: "https://jamesclear.com/three-questions",
-  },
-  angry: {
-    text: "Feeling a bit heated? Let's find a healthy outlet.",
-    linkLabel: "Quick Link: 2-minute venting note",
-    linkHref: "https://www.youtube.com/results?search_query=2+minute+guided+journaling+venting",
-  },
-  fearful: {
-    text: "Feeling uneasy? You're in a safe space right now.",
-    linkLabel: "Quick Link: 4-7-8 grounding breathing",
-    linkHref: "https://www.youtube.com/results?search_query=4-7-8+breathing+technique",
-  },
-  disgust: {
-    text: "Something rubbing you the wrong way? Let's unpack it.",
-    linkLabel: "Quick Link: Trigger deep-dive prompt",
-    linkHref: "https://positivepsychology.com/journaling-prompts/",
-  },
-  surprised: {
-    text: "A sudden shift? Journal it while it's fresh!",
-    linkLabel: "Quick Link: Good or bad surprise?",
-    linkHref: "https://www.psychologytoday.com/us/blog/questions-and-answers/201912/the-power-reflective-questions",
-  },
-};
-
-const textMoodKeywords = {
-  neutral: ["normal", "steady", "average", "usual", "regular", "fine"],
-  happy: ["happy", "great", "excited", "grateful", "joy", "smile", "good", "amazing", "win"],
-  calm: ["calm", "peaceful", "relaxed", "stable", "okay", "balanced", "fine", "content"],
-  sad: ["sad", "down", "lonely", "tired", "hopeless", "cry", "upset", "heavy", "hurt"],
-  anxious: ["anxious", "stress", "worried", "panic", "nervous", "overwhelmed", "racing", "fear"],
-  angry: ["angry", "mad", "furious", "annoyed", "irritated", "rage", "frustrated"],
-  fearful: ["fearful", "scared", "afraid", "terrified", "uneasy"],
-  disgust: ["disgust", "gross", "revolting", "nasty", "repulsed"],
-  surprised: ["surprised", "shocked", "unexpected", "sudden", "wow"],
-};
 
 function apiBase() {
   if (apiBaseInput && apiBaseInput.value) {
@@ -725,6 +720,15 @@ function wireInteractions() {
   });
 
   // Chatbot event listeners
+  if (chatMicBtn) {
+    chatMicBtn.addEventListener("click", () => {
+      if (!chatRecordingActive) {
+        startChatRecording();
+      } else {
+        stopChatRecording();
+      }
+    });
+  }
   if (sendChatBtn) {
     sendChatBtn.addEventListener("click", () => sendChatMessage());
   }
