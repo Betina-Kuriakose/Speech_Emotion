@@ -35,6 +35,8 @@ const chatMessages = document.getElementById("chatMessages");
 const chatInput = document.getElementById("chatInput");
 const sendChatBtn = document.getElementById("sendChatBtn");
 const closeChatBtn = document.getElementById("closeChatBtn");
+const chatMicBtn = document.getElementById("chatMicBtn");
+const chatRecordingPreview = document.getElementById("chatRecordingPreview");
 
 let mediaRecorder = null;
 let recordedChunks = [];
@@ -45,6 +47,11 @@ let currentUsername = null;
 let speechRecognition = null;
 let liveTranscript = "";
 let lastDetectedEmotion = null;
+
+// Chatbot microphone recording state
+let chatMediaRecorder = null;
+let chatRecordedChunks = [];
+let chatRecordingActive = false;
 
 const moodConfig = {
   neutral: {

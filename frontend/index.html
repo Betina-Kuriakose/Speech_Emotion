@@ -94,8 +94,10 @@
       <div id="chatMessages" class="chat-messages"></div>
       <div class="chat-input-area">
         <input id="chatInput" type="text" placeholder="Share your thoughts..." maxlength="500" />
+        <button id="chatMicBtn" type="button" class="chat-mic-btn" title="Record voice message">🎤</button>
         <button id="sendChatBtn" type="button" class="send-btn">Send</button>
       </div>
+      <audio id="chatRecordingPreview" class="hidden" controls></audio>
     </section>
 
     <p id="statusMessage" class="status-message"></p>
