@@ -1,3 +1,75 @@
+// --- Chatbot microphone recording logic ---
+async function startChatRecording() {
+  if (chatRecordingActive) return;
+  chatRecordedChunks = [];
+  chatRecordingActive = true;
+  chatMicBtn.classList.add("recording");
+  chatRecordingPreview.removeAttribute("src");
+  // Start browser speech recognition for transcript
+  let recognition = null;
+  if (window.SpeechRecognition || window.webkitSpeechRecognition) {
+    recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+    recognition.lang = "en-US";
+    recognition.interimResults = false;
+    recognition.continuous = false;
+    recognition.onresult = (event) => {
+      let transcript = "";
+      for (let i = 0; i < event.results.length; i++) {
+        transcript += event.results[i][0].transcript + " ";
+      }
+      chatInput.value = transcript.trim();
+    };
+    recognition.onerror = () => {};
+    recognition.onend = () => {};
+    recognition.start();
+    chatMicBtn._recognition = recognition;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    chatMediaRecorder = new MediaRecorder(stream);
+    chatMediaRecorder.ondataavailable = (event) => {
+      if (event.data.size > 0) chatRecordedChunks.push(event.data);
+    };
+    chatMediaRecorder.onstop = () => {
+      if (!chatRecordedChunks.length) return;
+      const audioBlob = new Blob(chatRecordedChunks, { type: chatMediaRecorder.mimeType });
+      chatRecordingPreview.src = URL.createObjectURL(audioBlob);
+      stream.getTracks().forEach((track) => track.stop());
+    };
+    chatMediaRecorder.start();
+  } catch (err) {
+    alert("Microphone access denied or unavailable: " + err.message);
+    chatRecordingActive = false;
+    chatMicBtn.classList.remove("recording");
+    if (chatMicBtn._recognition) {
+      chatMicBtn._recognition.stop();
+      chatMicBtn._recognition = null;
+    }
+  }
+}
+
+function stopChatRecording() {
+  if (!chatRecordingActive) return;
+  chatRecordingActive = false;
+  chatMicBtn.classList.remove("recording");
+  if (chatMediaRecorder && chatMediaRecorder.state === "recording") {
+    chatMediaRecorder.stop();
+  }
+  if (chatMicBtn._recognition) {
+    try { chatMicBtn._recognition.stop(); } catch {}
+    chatMicBtn._recognition = null;
+  }
+}
+// Chatbot mic button event listener
+if (chatMicBtn) {
+  chatMicBtn.addEventListener("click", () => {
+    if (!chatRecordingActive) {
+      startChatRecording();
+    } else {
+      stopChatRecording();
+    }
+  });
+}
 const loginView = document.getElementById("loginView");
 const journalView = document.getElementById("journalView");
 const loginUsername = document.getElementById("loginUsername");
